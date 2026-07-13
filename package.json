@@ -1,0 +1,40 @@
+{
+  "name": "fairway",
+  "private": true,
+  "version": "0.0.0",
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "packageManager": "yarn@4.11.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "preinstall": "node -e \"const v = parseInt(process.versions.node); if (v < 22) { console.error('\\nError: Node.js >= 22 is required (found ' + process.version + '). Run: nvm use 22\\n'); process.exit(1); }\""
+  },
+  "devDependencies": {
+    "@nx/eslint": "23.1.0",
+    "@nx/eslint-plugin": "23.1.0",
+    "@nx/expo": "23.1.0",
+    "@nx/jest": "23.1.0",
+    "@nx/js": "23.1.0",
+    "@swc-node/register": "^1.11.1",
+    "@swc/core": "^1.15.32",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.1",
+    "better-sqlite3": "^12.2.0",
+    "eslint": "^9.20.0",
+    "eslint-config-prettier": "^10.0.1",
+    "jest": "^30.0.2",
+    "jsonc-eslint-parser": "^2.4.0",
+    "nx": "23.1.0",
+    "prettier": "^3.5.0",
+    "ts-jest": "^29.4.0",
+    "ts-node": "^10.9.2",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.40.0"
+  }
+}

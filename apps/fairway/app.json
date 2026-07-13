@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "Fairway",
+    "slug": "fairway",
+    "scheme": "fairway",
+    "version": "0.1.0",
+    "orientation": "default",
+    "newArchEnabled": true,
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios"],
+    "ios": {
+      "bundleIdentifier": "com.tlenahan.fairway",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Fairway connects to your Uneekor EYE MINI launch monitor over your local network to discover it and receive shot data.",
+        "NSBonjourServices": ["_uneekor._tcp", "_http._tcp"],
+        "UIRequiresFullScreen": false
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-dev-client",
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0b3d2e",
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "data",
+  "sourceRoot": "libs/data/src",
+  "projectType": "library",
+  "tags": ["scope:golf", "type:util", "lib:data"]
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "store",
+  "sourceRoot": "libs/store/src",
+  "projectType": "library",
+  "tags": ["scope:golf", "type:util", "lib:store"]
+}

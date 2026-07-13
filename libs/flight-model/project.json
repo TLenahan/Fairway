@@ -1,0 +1,7 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "flight-model",
+  "sourceRoot": "libs/flight-model/src",
+  "projectType": "library",
+  "tags": ["scope:golf", "type:util", "lib:flight-model"]
+}

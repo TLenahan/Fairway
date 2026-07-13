@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+.nx/
+.expo/
+*.tsbuildinfo
+.DS_Store
+
+# Expo prebuild output (CNG — regenerate with `nx prebuild fairway`)
+apps/fairway/ios/
+apps/fairway/android/
+
+# Yarn
+.yarn/*
+!.yarn/releases
+!.yarn/patches
+!.yarn/plugins
+.pnp.*
+
+# Secrets
+.env
+.env.*
