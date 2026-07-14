@@ -32,10 +32,7 @@ export function formatDistance(
   return value.toFixed(decimals);
 }
 
-export function formatDegrees(
-  deg: number | null,
-  decimals = 1,
-): string | null {
+export function formatDegrees(deg: number | null, decimals = 1): string | null {
   if (deg === null) return null;
   return `${deg.toFixed(decimals)}°`;
 }

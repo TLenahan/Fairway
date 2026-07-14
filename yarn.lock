@@ -2356,6 +2356,10 @@ __metadata:
   resolution: "@golf/monitor@workspace:libs/monitor"
   dependencies:
     "@golf/types": "workspace:*"
+    zod: "npm:^3.24.4"
+  peerDependencies:
+    react-native-tcp-socket: "*"
+    react-native-udp: "*"
   languageName: unknown
   linkType: soft
 
@@ -2380,7 +2384,10 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@golf/ui@workspace:libs/ui"
   dependencies:
-    "@golf/types": "workspace:*"
+    twrnc: "npm:^4.6.1"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
   languageName: unknown
   linkType: soft
 
@@ -2389,6 +2396,10 @@ __metadata:
   resolution: "@golf/viz@workspace:libs/viz"
   dependencies:
     "@golf/types": "workspace:*"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+    react-native-svg: "*"
   languageName: unknown
   linkType: soft
 

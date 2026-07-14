@@ -18,8 +18,8 @@ export interface FairwayStoreDeps {
   monitor: MonitorService;
   data: DataStore;
   flightModel: FlightModel;
-  /** environment used when a shot arrives with no active session (quick session) */
-  defaultEnvironment: Environment;
+  /** current environment for implicit quick sessions — read at shot time */
+  getDefaultEnvironment(): Environment;
   /** non-fatal pipeline errors (e.g. persist failure) — surface, don't swallow */
   onError(err: Error): void;
 }
@@ -41,7 +41,7 @@ const launchConditionsFrom = (m: MeasuredShot): LaunchConditions => ({
  * results, and exposes the three CONTRACTS slices to the UI.
  */
 export function createFairwayStore(deps: FairwayStoreDeps) {
-  const { monitor, data, flightModel, defaultEnvironment, onError } = deps;
+  const { monitor, data, flightModel, getDefaultEnvironment, onError } = deps;
 
   const store = createStore<FairwayState>()((set, get) => ({
     /* ── ConnectionSlice ── */
@@ -113,7 +113,7 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
       name: 'Quick session',
       notes: null,
       startedAt: Date.now(),
-      environment: defaultEnvironment,
+      environment: getDefaultEnvironment(),
     });
     set({ session, sessionShots: [] });
     return session;

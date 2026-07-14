@@ -34,7 +34,12 @@ export interface WireMessage {
  * segment, and resyncs on the 0x2828 marker after garbage. Malformed JSON is
  * skipped without losing sync.
  */
+const SYNC_BYTE = 0x28;
+
 export class FrameParser {
+  // index-based byte ops only: under Metro the 'buffer' polyfill's typings
+  // return plain Uint8Array from subarray, so Node-only Buffer methods on
+  // slices (equals, indexOf-with-needle, toString) can't be relied on.
   private buf = Buffer.alloc(0);
 
   constructor(private readonly onMessage: (msg: WireMessage) => void) {}
@@ -43,21 +48,24 @@ export class FrameParser {
     this.buf = Buffer.concat([this.buf, Buffer.from(chunk)]);
     for (;;) {
       // resync to the 0x2828 marker if misaligned
-      if (this.buf.length >= 4 && !this.buf.subarray(2, 4).equals(SYNC)) {
-        const idx = this.buf.indexOf(SYNC, 1);
+      if (
+        this.buf.length >= 4 &&
+        !(this.buf[2] === SYNC_BYTE && this.buf[3] === SYNC_BYTE)
+      ) {
+        const idx = this.findSync();
         if (idx < 2) {
           if (this.buf.length > 4096) {
-            this.buf = this.buf.subarray(this.buf.length - 2);
+            this.buf = Buffer.from(this.buf.subarray(this.buf.length - 2));
           }
           return;
         }
-        this.buf = this.buf.subarray(idx - 2);
+        this.buf = Buffer.from(this.buf.subarray(idx - 2));
       }
       if (this.buf.length < HEADER_LEN) return;
       const len = this.buf.readUInt32BE(4);
       if (this.buf.length < HEADER_LEN + len) return; // wait for more
-      const body = this.buf.subarray(HEADER_LEN, HEADER_LEN + len);
-      this.buf = this.buf.subarray(HEADER_LEN + len);
+      const body = Buffer.from(this.buf.subarray(HEADER_LEN, HEADER_LEN + len));
+      this.buf = Buffer.from(this.buf.subarray(HEADER_LEN + len));
       let msg: WireMessage;
       try {
         msg = JSON.parse(body.toString('utf8')) as WireMessage;
@@ -66,6 +74,14 @@ export class FrameParser {
       }
       this.onMessage(msg);
     }
+  }
+
+  /** first index (≥1) of the 0x28 0x28 sync marker, or −1 */
+  private findSync(): number {
+    for (let i = 1; i + 1 < this.buf.length; i += 1) {
+      if (this.buf[i] === SYNC_BYTE && this.buf[i + 1] === SYNC_BYTE) return i;
+    }
+    return -1;
   }
 }
 

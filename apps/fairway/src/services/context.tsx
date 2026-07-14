@@ -1,4 +1,5 @@
-import { AnalyticsEngine, AnalysisService, DataStore, MonitorService } from '@golf/types';
+import type { summarizeClub, summarizeSession } from '@golf/analytics';
+import { AnalysisService, DataStore, MonitorService } from '@golf/types';
 import { FairwayStore } from '@golf/store';
 import { createContext, ReactNode, useContext } from 'react';
 import { StoreApi } from 'zustand';
@@ -13,7 +14,11 @@ import { SettingsState } from './settings';
 export interface AppServices {
   monitor: MonitorService;
   data: DataStore;
-  analytics: AnalyticsEngine;
+  /** concrete engine — the extra optional params (clubs, baselines) matter here */
+  analytics: {
+    summarizeSession: typeof summarizeSession;
+    summarizeClub: typeof summarizeClub;
+  };
   analysis: AnalysisService;
   store: FairwayStore;
   settings: StoreApi<SettingsState>;

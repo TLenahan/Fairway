@@ -202,7 +202,11 @@ function build() {
     monitor,
     data,
     flightModel: fakeFlightModel,
-    defaultEnvironment: { altitudeM: 1849, temperatureC: null, presetName: 'Home ~6,000 ft' },
+    getDefaultEnvironment: () => ({
+      altitudeM: 1849,
+      temperatureC: null,
+      presetName: 'Home ~6,000 ft',
+    }),
     onError: (e) => errors.push(e),
   });
   return { monitor, data, store, errors };

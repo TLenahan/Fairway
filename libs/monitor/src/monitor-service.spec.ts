@@ -134,16 +134,21 @@ const flush = async (times = 3) => {
   for (let i = 0; i < times; i += 1) await Promise.resolve();
 };
 
+const liveMonitors: EyeMiniMonitor[] = [];
+
 function build() {
   const tcp = new FakeTcpFactory();
   const udp = new FakeUdpFactory();
   const monitor = new EyeMiniMonitor({ tcp, udp });
+  liveMonitors.push(monitor);
   const states: string[] = [];
   monitor.on('connection', (s) => states.push(s));
   return { tcp, udp, monitor, states };
 }
 
 afterEach(() => {
+  // stop poll/reconnect timers so no real interval outlives a test
+  for (const monitor of liveMonitors.splice(0)) monitor.disconnect();
   jest.useRealTimers();
 });
 

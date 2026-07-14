@@ -66,10 +66,28 @@ const rnTcpFactory: TcpFactory = {
   },
 };
 
+/**
+ * Structural view of react-native-udp's socket — its published typings don't
+ * expose the EventEmitter surface consistently across resolution modes.
+ */
+interface RnUdpSocket {
+  bind(port: number, callback?: () => void): void;
+  setBroadcast(flag: boolean): void;
+  on(
+    event: 'message',
+    handler: (msg: Uint8Array, rinfo: { address: string }) => void,
+  ): void;
+  once(event: 'error', handler: (err: Error) => void): void;
+  close(): void;
+}
+
 const rnUdpFactory: UdpFactory = {
   openBroadcastListener(port: number): Promise<UdpSocket> {
     return new Promise<UdpSocket>((resolve, reject) => {
-      const socket = dgram.createSocket({ type: 'udp4', reusePort: true });
+      const socket = dgram.createSocket({
+        type: 'udp4',
+        reusePort: true,
+      }) as unknown as RnUdpSocket;
       socket.once('error', (err: Error) => reject(err));
       socket.bind(port, () => {
         try {

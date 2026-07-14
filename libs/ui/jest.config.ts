@@ -1,5 +1,6 @@
 export default {
   displayName: 'ui',
+  passWithNoTests: true,
   testEnvironment: 'node',
   transform: {
     '^.+\\.[tj]sx?$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.json' }],
