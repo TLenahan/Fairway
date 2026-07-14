@@ -5,23 +5,48 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "paths": {
-      "@/*": ["./src/*"],
-      "@golf/types": ["../../libs/types/src/index.ts"],
-      "@golf/monitor": ["../../libs/monitor/src/index.ts"],
-      "@golf/data": ["../../libs/data/src/index.ts"],
-      "@golf/flight-model": ["../../libs/flight-model/src/index.ts"],
-      "@golf/analytics": ["../../libs/analytics/src/index.ts"],
-      "@golf/analysis": ["../../libs/analysis/src/index.ts"],
-      "@golf/viz": ["../../libs/viz/src/index.ts"],
-      "@golf/store": ["../../libs/store/src/index.ts"],
-      "@golf/ui": ["../../libs/ui/src/index.ts"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@golf/types": [
+        "../../libs/types/src/index.ts"
+      ],
+      "@golf/monitor": [
+        "../../libs/monitor/src/index.ts"
+      ],
+      "@golf/data": [
+        "../../libs/data/src/index.ts"
+      ],
+      "@golf/flight-model": [
+        "../../libs/flight-model/src/index.ts"
+      ],
+      "@golf/analytics": [
+        "../../libs/analytics/src/index.ts"
+      ],
+      "@golf/analysis": [
+        "../../libs/analysis/src/index.ts"
+      ],
+      "@golf/viz": [
+        "../../libs/viz/src/index.ts"
+      ],
+      "@golf/store": [
+        "../../libs/store/src/index.ts"
+      ],
+      "@golf/ui": [
+        "../../libs/ui/src/index.ts"
+      ]
     }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "expo-env.d.ts",
+    "../../libs/viz/src/assets/images.d.ts"
   ],
-  "exclude": ["node_modules", "ios", "android"]
+  "exclude": [
+    "node_modules",
+    "ios",
+    "android"
+  ]
 }

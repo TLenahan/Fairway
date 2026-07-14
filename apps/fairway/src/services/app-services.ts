@@ -12,6 +12,10 @@ import { createFairwayStore } from '@golf/store';
 import { fetch as expoFetch } from 'expo/fetch';
 import * as SQLite from 'expo-sqlite';
 
+import {
+  startKeepAlive,
+  stopKeepAlive,
+} from '../../modules/practice-keepalive';
 import { getApiKey } from './api-key';
 import { AppServices } from './context';
 import { createSettingsStore, loadSettings } from './settings';
@@ -60,10 +64,18 @@ export async function createAppServices(
   // debugging session once already
   monitor.on('error', onError);
 
-  // reflect persisted handedness on the sensor whenever we (re)connect
+  // On (re)connect: reflect persisted handedness on the sensor and hold the
+  // keep-alive foreground service for exactly the connected span, so shots
+  // keep streaming with the screen off. Released on disconnect/error.
   monitor.on('connection', (state) => {
     if (state === 'connected') {
+      startKeepAlive(
+        'Fairway — connected',
+        'Streaming shots from the EYE MINI',
+      );
       void monitor.setHandedness(settings.getState().handedness).catch(onError);
+    } else if (state === 'disconnected' || state === 'error') {
+      stopKeepAlive();
     }
   });
 

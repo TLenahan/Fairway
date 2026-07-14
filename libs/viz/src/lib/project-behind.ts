@@ -55,6 +55,8 @@ export interface BehindProjection {
 export interface BehindSize {
   width: number;
   height: number;
+  /** where the horizon sits (fraction of height) — match the backdrop photo */
+  horizonFraction?: number;
 }
 
 const pathOf = (points: ScreenPoint[]): string =>
@@ -73,7 +75,7 @@ export function projectBehind(
   size: BehindSize,
 ): BehindProjection {
   const cx = size.width / 2;
-  const horizonY = size.height * HORIZON_FRACTION;
+  const horizonY = size.height * (size.horizonFraction ?? HORIZON_FRACTION);
 
   // Solve ky so the ground at the tee (x=0, y=0) hits the bottom of the view:
   //   bottom = horizonY + EYE_M · ky · scale(0)  with scale(0) = 1

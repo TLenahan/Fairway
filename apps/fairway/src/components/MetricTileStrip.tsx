@@ -3,7 +3,9 @@ import { tw } from '@golf/ui';
 import { ScrollView, Text, View } from 'react-native';
 
 import {
+  apexUnitLabel,
   distanceUnitLabel,
+  formatApexHeight,
   formatDegrees,
   formatDistance,
   formatSmash,
@@ -80,8 +82,8 @@ export function MetricTileStrip({ measured, flight }: MetricTileStripProps) {
         },
         {
           label: 'Apex',
-          value: formatDistance(flight?.apexM ?? null, distanceUnit),
-          unit: distance,
+          value: formatApexHeight(flight?.apexM ?? null, distanceUnit),
+          unit: apexUnitLabel[distanceUnit],
           estimate: true,
         },
         { label: 'Path', value: formatDegrees(measured.club.pathDeg) },

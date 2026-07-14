@@ -8,6 +8,7 @@ import { z } from 'zod';
  */
 export const MS_TO_MPH = 2.2369362920544;
 export const M_TO_YD = 1.0936132983377078;
+export const M_TO_FT = 3.280839895;
 
 type Speed = z.infer<typeof SpeedUnit>;
 type Distance = z.infer<typeof DistanceUnit>;
@@ -36,6 +37,20 @@ export function formatDegrees(deg: number | null, decimals = 1): string | null {
   if (deg === null) return null;
   return `${deg.toFixed(decimals)}°`;
 }
+
+/** apex reads in feet for imperial users (TrackMan convention), meters otherwise */
+export function formatApexHeight(
+  m: number | null,
+  unit: Distance,
+): string | null {
+  if (m === null) return null;
+  return unit === 'yards' ? (m * M_TO_FT).toFixed(0) : m.toFixed(1);
+}
+
+export const apexUnitLabel: Record<Distance, string> = {
+  yards: 'ft',
+  meters: 'm',
+};
 
 export function formatSpin(rpm: number | null): string | null {
   if (rpm === null) return null;

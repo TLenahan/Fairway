@@ -1,7 +1,8 @@
 import { Button, tw } from '@golf/ui';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Link } from 'expo-router';
-import { Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { PermissionsAndroid, Platform, Text, View } from 'react-native';
 
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { ClubPicker } from '@/components/ClubPicker';
@@ -15,10 +16,16 @@ import { useFairwayStore, useServices, useSettings } from '@/services/context';
  * layout — built to be glanced at between swings, not scrolled.
  */
 export default function PracticeScreen() {
-  // practice = display stays on; the LAN connection survives because the
-  // screen never times out (true screen-off streaming needs a foreground
-  // service — future work)
+  // display stays on while practicing; with the screen off the keep-alive
+  // foreground service (started on connect) holds the sockets open
   useKeepAwake();
+  // Android 13+: the keep-alive foreground service's notification needs this;
+  // service runs either way, the notification is just hidden if denied
+  useEffect(() => {
+    if (Platform.OS === 'android' && Platform.Version >= 33) {
+      void PermissionsAndroid.request('android.permission.POST_NOTIFICATIONS');
+    }
+  }, []);
   const { data, store } = useServices();
   const connection = useFairwayStore((s) => s.connection);
   const ballReady = useFairwayStore((s) => s.ballReady);
