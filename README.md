@@ -54,6 +54,27 @@ Then `yarn nx expo:start fairway` and open from the dev client. iOS will prompt
 for **Local Network** access on first connect — required, and denial fails
 silently (the app surfaces a `localNetworkDenied` state).
 
+## Status (July 2026 build)
+
+Built and verified (all Node-testable ACs green — `nx run-many -t typecheck lint test`):
+
+- WP0–WP7 complete: frozen contracts, monitor (decodes the captured fixture
+  exactly, no cmd 217), data (tested vs real SQLite), flight-model (all
+  FLIGHT_MODEL.md §7 bands incl. 6–9% altitude gain), analytics (hand-checked),
+  analysis (streamed narrative + validated verdict, TrackMan-cited baselines),
+  viz, store, and all screens.
+- `expo prebuild` validated; NSLocalNetworkUsageDescription + NSBonjourServices
+  confirmed in the generated Info.plist.
+
+Not yet verified (needs the real device): discovery/connect/shot streaming
+against the Mini, Local Network permission flow, sensor mode switching
+(`clubtype` enums for tee/putter are still the observed-working default `20` —
+override via `MonitorConfig.clubTypeByMode` once captured).
+
+Not yet built (WP8): CSV/JSON export, cross-session trend charts, impact-image
+fetch (`shotImgPath` is plumbed through), reconnection hardening beyond
+backoff, iPad landscape polish.
+
 ## Renaming (placeholders)
 
 `fairway` (app name) and `@golf/*` (npm scope) are the handoff placeholders.
