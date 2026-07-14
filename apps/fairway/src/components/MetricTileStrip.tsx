@@ -109,7 +109,12 @@ export function MetricTileStrip({
 
   if (!measured) {
     return (
-      <View style={tw`h-20 items-center justify-center`}>
+      <View
+        style={tw.style(
+          'h-20 items-center justify-center',
+          floating && 'mx-6 rounded-2xl bg-ink/40',
+        )}
+      >
         <Text
           style={[
             tw.style(floating ? 'text-white/90' : 'text-silver'),
@@ -133,8 +138,10 @@ export function MetricTileStrip({
           key={tile.label}
           style={tw.style(
             'w-24 items-center px-2',
+            // translucent scrim: readable over sky and turf without the
+            // solid-white-card look
             floating
-              ? 'py-1.5'
+              ? 'rounded-2xl bg-ink/40 py-2'
               : 'rounded-2xl border border-green-100 bg-white py-3',
           )}
         >
