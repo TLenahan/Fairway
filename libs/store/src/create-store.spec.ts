@@ -222,6 +222,7 @@ describe('createFairwayStore', () => {
       loftDeg: 34,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
 
@@ -245,6 +246,7 @@ describe('createFairwayStore', () => {
       loftDeg: 34,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
 
@@ -266,6 +268,7 @@ describe('createFairwayStore', () => {
       loftDeg: 34,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     const wedge = await data.createClub({
@@ -275,6 +278,7 @@ describe('createFairwayStore', () => {
       loftDeg: 60,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     const driver = await data.createClub({
@@ -284,6 +288,7 @@ describe('createFairwayStore', () => {
       loftDeg: 10.5,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
 
@@ -303,6 +308,7 @@ describe('createFairwayStore', () => {
       loftDeg: null,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     await store.getState().selectClub(putter.id);
@@ -322,6 +328,7 @@ describe('createFairwayStore', () => {
       loftDeg: 60,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     expect(store.getState().activeClub?.id).toBe(club.id);

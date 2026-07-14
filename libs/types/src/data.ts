@@ -7,7 +7,9 @@ import { MeasuredShot, ShotRecord } from './shot';
 /* ───────────────────────── persistence — WP2 public API ───────────────────────── */
 export interface DataStore {
   // clubs
-  createClub(input: Omit<Club, 'id' | 'createdAt' | 'sensorMode'>): Promise<Club>;
+  createClub(
+    input: Omit<Club, 'id' | 'createdAt' | 'sensorMode'>,
+  ): Promise<Club>;
   updateClub(id: string, patch: Partial<Club>): Promise<Club>;
   listClubs(opts?: { includeArchived?: boolean }): Promise<Club[]>;
   archiveClub(id: string): Promise<void>;

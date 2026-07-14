@@ -66,6 +66,7 @@ const buildClubSummary = (
   clubName: string,
   shots: ShotRecord[],
   baseline: Baseline | undefined,
+  focusNote: string | null = null,
 ): ClubSummary => {
   const metrics: Record<string, MetricStat> = {};
   for (const key of METRIC_KEYS) {
@@ -85,6 +86,7 @@ const buildClubSummary = (
   return {
     clubId,
     clubName,
+    focusNote,
     shotCount: shots.length,
     metrics,
     dispersion: computeDispersion(landings),
@@ -129,8 +131,8 @@ export const summarizeSession = (
   const sessionId = shots.length > 0 ? shots[0].sessionId : '';
   const active = shots.filter((shot) => !shot.discarded);
 
-  const nameById = new Map<string, string>(
-    (clubs ?? []).map((club) => [club.id, club.name]),
+  const clubById = new Map<string, Club>(
+    (clubs ?? []).map((club) => [club.id, club]),
   );
 
   const byClub = new Map<string, ShotRecord[]>();
@@ -143,9 +145,10 @@ export const summarizeSession = (
   const clubSummaries = [...byClub.entries()].map(([clubId, clubShots]) =>
     buildClubSummary(
       clubId,
-      nameById.get(clubId) ?? clubId,
+      clubById.get(clubId)?.name ?? clubId,
       clubShots,
       undefined,
+      clubById.get(clubId)?.focusNote ?? null,
     ),
   );
 

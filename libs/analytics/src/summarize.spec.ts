@@ -14,6 +14,7 @@ const club = (id: string, name: string): Club => ({
   loftDeg: 34,
   notes: null,
   tracerColor: null,
+  focusNote: null,
   archived: false,
   createdAt: 1,
 });

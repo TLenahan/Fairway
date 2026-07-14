@@ -5,7 +5,7 @@ describe('migration harness', () => {
   it('migrates a fresh database to the latest version', async () => {
     const db = openTestDatabase();
     const version = await runMigrations(db);
-    expect(version).toBe(2);
+    expect(version).toBe(3);
 
     const tables = await db.getAllAsync<{ name: string }>(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -20,7 +20,7 @@ describe('migration harness', () => {
   it('is idempotent — re-running applies nothing', async () => {
     const db = openTestDatabase();
     await runMigrations(db);
-    await expect(runMigrations(db)).resolves.toBe(2);
+    await expect(runMigrations(db)).resolves.toBe(3);
     db.close();
   });
 

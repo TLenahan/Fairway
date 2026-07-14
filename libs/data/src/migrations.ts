@@ -117,6 +117,13 @@ export const MIGRATIONS: Migration[] = [
       await db.execAsync('ALTER TABLE clubs ADD COLUMN tracer_color TEXT');
     },
   },
+  {
+    version: 3,
+    async up(db) {
+      // what the golfer is working on with this club — fed to AI analysis
+      await db.execAsync('ALTER TABLE clubs ADD COLUMN focus_note TEXT');
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {

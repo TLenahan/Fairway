@@ -46,6 +46,7 @@ export type BaselineGap = z.infer<typeof BaselineGapSchema>;
 export const ClubSummarySchema = z.object({
   clubId: z.string(),
   clubName: z.string(),
+  focusNote: z.string().nullable().optional(), // golfer's stated intent, for AI context
   shotCount: z.number(),
   // keys: ballSpeedMs, launchAngleDeg, backspinRpm, clubSpeedMs, clubPathDeg,
   // attackAngleDeg, carryM, ...

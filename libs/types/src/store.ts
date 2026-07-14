@@ -27,5 +27,7 @@ export interface ActiveSessionSlice {
   // re-tags; reconfigures sensor only if mode changes
   selectClub(clubId: string): Promise<void>;
   // quick-add mid-session
-  createClub(input: Omit<Club, 'id' | 'createdAt' | 'sensorMode'>): Promise<Club>;
+  createClub(
+    input: Omit<Club, 'id' | 'createdAt' | 'sensorMode'>,
+  ): Promise<Club>;
 }

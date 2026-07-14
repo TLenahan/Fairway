@@ -18,6 +18,7 @@ const club = (
   loftDeg,
   notes: null,
   tracerColor: null,
+  focusNote: null,
   archived: false,
 });
 

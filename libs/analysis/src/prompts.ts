@@ -31,6 +31,7 @@ export function systemPrompt(env: Environment): string {
     '- Every issue needs evidence (actual numbers) and a why (the ball-flight mechanism).',
     '- Every drill must target a metric in the data and say exactly which number should move (howMeasured).',
     '- Be specific and non-generic; no platitudes.',
+    '- When a club carries a focusNote, that is what the golfer was deliberately working on with those shots — weigh it heavily: judge whether the numbers show progress on that focus, and tie drills to it.',
     '',
     'Output format — exactly two parts:',
     '1. A concise coaching narrative (short paragraphs, plain text, no headings).',

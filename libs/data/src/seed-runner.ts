@@ -14,6 +14,7 @@ export async function seedDefaultClubs(store: DataStore): Promise<void> {
       loftDeg: club.loftDeg,
       notes: club.notes,
       tracerColor: club.tracerColor,
+      focusNote: club.focusNote,
       archived: club.archived,
     });
   }

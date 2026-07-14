@@ -79,6 +79,7 @@ describe('@golf/types contracts', () => {
       loftDeg: 60,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
       createdAt: 1,
     });

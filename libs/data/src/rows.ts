@@ -25,6 +25,7 @@ export interface ClubRow {
   loft_deg: number | null;
   notes: string | null;
   tracer_color: string | null;
+  focus_note: string | null;
   archived: number;
   created_at: number;
 }
@@ -39,6 +40,7 @@ export function mapClubRow(row: ClubRow): Club {
     loftDeg: row.loft_deg,
     notes: row.notes,
     tracerColor: row.tracer_color ?? null,
+    focusNote: row.focus_note ?? null,
     archived: row.archived === 1,
     createdAt: row.created_at,
   });

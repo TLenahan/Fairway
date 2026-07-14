@@ -91,6 +91,7 @@ describe('createDataStore', () => {
       loftDeg: 60,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     expect(club.sensorMode).toBe('iron');
@@ -128,6 +129,7 @@ describe('createDataStore', () => {
       loftDeg: 34,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     const session = await store.createSession({
@@ -166,6 +168,7 @@ describe('createDataStore', () => {
       loftDeg: 34,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     const session = await store.createSession({
@@ -189,6 +192,7 @@ describe('createDataStore', () => {
       loftDeg: 34,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     const session = await store.createSession({
@@ -217,6 +221,7 @@ describe('createDataStore', () => {
       loftDeg: 10.5,
       notes: null,
       tracerColor: null,
+      focusNote: null,
       archived: false,
     });
     const s1 = await store.createSession({

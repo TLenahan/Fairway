@@ -67,8 +67,8 @@ export function createDataStore(
         sensorMode: categoryToSensorMode[input.category],
       };
       await db.runAsync(
-        `INSERT INTO clubs (id, name, category, sensor_mode, swing_tag, loft_deg, notes, tracer_color, archived, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO clubs (id, name, category, sensor_mode, swing_tag, loft_deg, notes, tracer_color, focus_note, archived, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           club.id,
           club.name,
@@ -78,6 +78,7 @@ export function createDataStore(
           club.loftDeg,
           club.notes,
           club.tracerColor,
+          club.focusNote,
           club.archived ? 1 : 0,
           club.createdAt,
         ],
@@ -94,7 +95,7 @@ export function createDataStore(
       }
       await db.runAsync(
         `UPDATE clubs SET name = ?, category = ?, sensor_mode = ?, swing_tag = ?,
-           loft_deg = ?, notes = ?, tracer_color = ?, archived = ? WHERE id = ?`,
+           loft_deg = ?, notes = ?, tracer_color = ?, focus_note = ?, archived = ? WHERE id = ?`,
         [
           next.name,
           next.category,
@@ -103,6 +104,7 @@ export function createDataStore(
           next.loftDeg,
           next.notes,
           next.tracerColor,
+          next.focusNote,
           next.archived ? 1 : 0,
           id,
         ],
