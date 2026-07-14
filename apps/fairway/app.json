@@ -7,13 +7,28 @@
     "orientation": "default",
     "newArchEnabled": true,
     "userInterfaceStyle": "automatic",
-    "platforms": ["ios"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "android": {
+      "package": "com.tlenahan.fairway",
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE"
+      ]
+    },
     "ios": {
       "bundleIdentifier": "com.tlenahan.fairway",
       "supportsTablet": true,
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Fairway connects to your Uneekor EYE MINI launch monitor over your local network to discover it and receive shot data.",
-        "NSBonjourServices": ["_uneekor._tcp", "_http._tcp"],
+        "NSBonjourServices": [
+          "_uneekor._tcp",
+          "_http._tcp"
+        ],
         "UIRequiresFullScreen": false
       }
     },
@@ -25,6 +40,7 @@
       [
         "expo-splash-screen",
         {
+          "image": "./assets/splash.png",
           "backgroundColor": "#0b3d2e",
           "resizeMode": "contain"
         }
