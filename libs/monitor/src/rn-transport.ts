@@ -77,6 +77,7 @@ interface RnUdpSocket {
     event: 'message',
     handler: (msg: Uint8Array, rinfo: { address: string }) => void,
   ): void;
+  addMembership(multicastAddress: string): void;
   once(event: 'error', handler: (err: Error) => void): void;
   close(): void;
 }
@@ -94,6 +95,17 @@ const rnUdpFactory: UdpFactory = {
           socket.setBroadcast(true);
         } catch {
           // some platforms deliver broadcast without the flag; non-fatal
+        }
+        try {
+          // Android: react-native-udp only acquires the Wi-Fi MulticastLock
+          // inside addMembership(), and without the lock Pixel-class Wi-Fi
+          // firmware filters broadcast UDP before it reaches the app — the
+          // beacon never arrives. Joining any multicast group grabs the lock;
+          // mDNS's group is a safe, well-known choice. (Verified against
+          // UdpSockets.java in react-native-udp 4.x.)
+          socket.addMembership('224.0.0.251');
+        } catch {
+          // iOS / unsupported: broadcast reception works without it
         }
         resolve({
           onMessage(handler: (data: Uint8Array, fromIp: string) => void): void {

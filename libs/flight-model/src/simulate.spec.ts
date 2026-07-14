@@ -111,11 +111,44 @@ describe('simulate — shot shape and curvature', () => {
   it('zero sidespin with left HLA finishes left of the line (HLA only)', () => {
     const pushLeft = simulate(launch({ launchDirectionDeg: -3 }), seaLevel);
     expect(pushLeft.offlineM).toBeLessThan(-5);
-    // no curvature: lateral finish ≈ straight-line projection of HLA
-    const expected = Math.tan((-3 * Math.PI) / 180) * pushLeft.carryM;
+    // no curvature: lateral finish ≈ carry (flight-line distance) × sin(HLA)
+    const expected = Math.sin((-3 * Math.PI) / 180) * pushLeft.carryM;
     expect(Math.abs(pushLeft.offlineM - expected)).toBeLessThan(
       0.15 * Math.abs(expected),
     );
+  });
+
+  it('carry is the flight-line distance, not the target-line projection', () => {
+    const straight = simulate(launch({}), seaLevel);
+    const pulled = simulate(launch({ launchDirectionDeg: -17.5 }), seaLevel);
+    // same speed/spin flies the same distance regardless of start line
+    expect(pulled.carryM).toBeCloseTo(straight.carryM, -1);
+    expect(pulled.carryM).toBeGreaterThan(Math.abs(pulled.landing.x));
+  });
+});
+
+describe('simulate — real-shot regression (Uneekor VIEW reference)', () => {
+  // 52° flighted pull captured 2026-07-13 on the EYE MINI at ~1849 m.
+  // VIEW (the vendor's own model): carry 73.6 yd, total 80 yd.
+  const realShot = {
+    ballSpeedMs: 66.7 / 2.2369362920544,
+    launchAngleDeg: 22.8,
+    launchDirectionDeg: -17.5,
+    backspinRpm: 6960,
+    sidespinRpm: -224,
+    rollspinRpm: 0,
+  };
+  const home = { altitudeM: 1849, temperatureC: null, presetName: null };
+  const YD = 1.0936132983377078;
+
+  it('lands within a few yards of VIEW for carry and total', () => {
+    const result = simulate(realShot, home);
+    expect(result.carryM * YD).toBeGreaterThan(73.6 - 4);
+    expect(result.carryM * YD).toBeLessThan(73.6 + 4);
+    expect(result.totalM * YD).toBeGreaterThan(80 - 4);
+    expect(result.totalM * YD).toBeLessThan(80 + 4);
+    // a 7,000 rpm wedge does not roll out like a driver
+    expect(result.rolloutM * YD).toBeLessThan(10);
   });
 });
 

@@ -5,6 +5,7 @@ import { FlatList, Text, View } from 'react-native';
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { ClubPicker } from '@/components/ClubPicker';
 import { ShotMetricsGrid } from '@/components/ShotMetricsGrid';
+import { ShotTracer } from '@/components/ShotTracer';
 import { formatDistance, formatSpeed } from '@/lib/format';
 import { useFairwayStore, useServices, useSettings } from '@/services/context';
 
@@ -35,9 +36,24 @@ export default function PracticeScreen() {
   return (
     <View style={tw`flex-1 bg-ivory p-4`}>
       <View style={tw`flex-row items-center justify-between`}>
-        <Link href="/connect">
-          <ConnectionDot state={connection} />
-        </Link>
+        {connection === 'connected' ? (
+          <Link href="/connect">
+            <ConnectionDot state={connection} />
+          </Link>
+        ) : (
+          <Link href="/connect" asChild>
+            <Button
+              label={
+                connection === 'connecting' || connection === 'discovering'
+                  ? 'Connecting…'
+                  : 'Connect to EYE MINI'
+              }
+              compact
+              variant="secondary"
+              onPress={() => undefined}
+            />
+          </Link>
+        )}
         <View style={tw`flex-row items-center gap-3`}>
           <Link href="/sessions" style={tw`text-sm font-medium text-green-700`}>
             Sessions
@@ -93,10 +109,16 @@ export default function PracticeScreen() {
         )}
       </Card>
 
+      <SectionTitle title="Tracer" />
+      <Card>
+        <ShotTracer sessionShots={sessionShots} />
+      </Card>
+
       <SectionTitle
         title={`Session shots${session ? ` · ${sessionShots.length}` : ''}`}
       />
       <FlatList
+        style={tw`flex-1`}
         data={sessionShots}
         keyExtractor={(shot) => shot.id}
         ListEmptyComponent={

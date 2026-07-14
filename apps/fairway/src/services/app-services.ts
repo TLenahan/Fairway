@@ -56,6 +56,10 @@ export async function createAppServices(
     onError,
   });
 
+  // surface transport/protocol errors — a silent socket failure cost us a
+  // debugging session once already
+  monitor.on('error', onError);
+
   // reflect persisted handedness on the sensor whenever we (re)connect
   monitor.on('connection', (state) => {
     if (state === 'connected') {

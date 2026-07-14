@@ -9,7 +9,7 @@ import { airDensityKgM3 } from './air';
 import { integrateFlight } from './integrator';
 import { degToRad, radToDeg, vec3 } from './math';
 import { rolloutM } from './rollout';
-import { initialSpinRadS } from './spin';
+import { initialSpinRadS, spinAtTime, RPM_TO_RAD_PER_S } from './spin';
 
 /**
  * The one flight engine every view builds on (BUILD_SPEC §10.1). Pure and
@@ -23,13 +23,14 @@ export const simulate = (
   const hlaRad = degToRad(launch.launchDirectionDeg);
   const v0 = launch.ballSpeedMs;
 
+  const spin0 = initialSpinRadS(launch);
   const integration = integrateFlight({
     initialVelocityMs: vec3(
       v0 * Math.cos(vlaRad) * Math.cos(hlaRad),
       v0 * Math.sin(vlaRad),
       v0 * Math.cos(vlaRad) * Math.sin(hlaRad),
     ),
-    initialSpinRadS: initialSpinRadS(launch),
+    initialSpinRadS: spin0,
     airDensityKgM3: airDensityKgM3(env.altitudeM, env.temperatureC),
   });
 
@@ -41,12 +42,21 @@ export const simulate = (
   const descentDeg = radToDeg(
     Math.atan2(-landing.velocityMs.y, horizontalSpeed),
   );
-  const rollout = rolloutM(horizontalSpeed, descentDeg);
+  const spinAtLanding = spinAtTime(spin0, landing.tS);
+  const landingSpinRpm =
+    Math.hypot(spinAtLanding.x, spinAtLanding.y, spinAtLanding.z) /
+    RPM_TO_RAD_PER_S;
+  const rollout = rolloutM(horizontalSpeed, descentDeg, landingSpinRpm);
+
+  // carry = horizontal distance the ball actually flew (along its own line —
+  // what golfers and launch monitors mean by carry), NOT the target-line
+  // projection. offlineM/landing keep the target-line frame for the views.
+  const carry = Math.hypot(landing.x, landing.z);
 
   return {
     path: integration.path,
-    carryM: landing.x,
-    totalM: landing.x + rollout,
+    carryM: carry,
+    totalM: carry + rollout,
     apexM: integration.apexM,
     descentDeg,
     flightTimeS: landing.tS,
