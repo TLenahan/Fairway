@@ -1,6 +1,63 @@
 import { FlightResult } from '@golf/types';
 
+import { Dispersion } from '@golf/types';
+
+import { buildMultiGroupGeometry } from './dispersion-geometry';
 import { polylineLength, projectBehind } from './project-behind';
+
+const dispersion = (centerX: number, centerZ: number): Dispersion => ({
+  centerX,
+  centerZ,
+  ellipseSemiMajorM: 6,
+  ellipseSemiMinorM: 3,
+  ellipseAngleDeg: 0,
+  biasLateralM: centerZ,
+  biasDepthM: 0,
+  lateralSpreadM: 3,
+  depthSpreadM: 6,
+});
+
+describe('buildMultiGroupGeometry', () => {
+  it('places each group on a shared viewport, keeping its color', () => {
+    const geometry = buildMultiGroupGeometry(
+      [
+        {
+          clubId: 'red',
+          color: '#ff0000',
+          landings: [
+            { x: 150, z: -8 },
+            { x: 156, z: -6 },
+          ],
+          dispersion: dispersion(153, -7),
+        },
+        {
+          clubId: 'yellow',
+          color: '#ffff00',
+          landings: [
+            { x: 148, z: 10 },
+            { x: 152, z: 12 },
+          ],
+          dispersion: dispersion(150, 11),
+        },
+      ],
+      { width: 300, height: 300 },
+    );
+    expect(geometry.groups).toHaveLength(2);
+    expect(geometry.groups[0].color).toBe('#ff0000');
+    expect(geometry.groups[1].color).toBe('#ffff00');
+    // both groups measured against ONE viewport: the left (red, −z) pattern
+    // sits left of the right (yellow, +z) pattern on screen
+    expect(geometry.groups[0].center.x).toBeLessThan(
+      geometry.groups[1].center.x,
+    );
+    expect(geometry.groups[0].ellipse).not.toBeNull();
+  });
+
+  it('handles empty input', () => {
+    const geometry = buildMultiGroupGeometry([], { width: 200, height: 200 });
+    expect(geometry.groups).toEqual([]);
+  });
+});
 
 const flight = (over: Partial<FlightResult> = {}): FlightResult => {
   const path = [];

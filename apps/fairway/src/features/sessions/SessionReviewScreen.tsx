@@ -1,4 +1,9 @@
-import { GappingView, GroupingView, TrajectoryView } from '@golf/viz';
+import {
+  GappingView,
+  GroupSeries,
+  MultiGroupingView,
+  TrajectoryView,
+} from '@golf/viz';
 import {
   Club,
   DEFAULT_TRACER_COLOR,
@@ -69,6 +74,29 @@ export default function SessionReviewScreen() {
   const focusShots = shots.filter((s) => s.clubId === focusId && !s.discarded);
   const focusFlights = focusShots.flatMap((s) => (s.flight ? [s.flight] : []));
   const focusSummary = summary?.clubs.find((c) => c.clubId === focusId) ?? null;
+
+  // one dispersion series per group, each in its group color — overlaid so
+  // patterns compare directly
+  const groupSeries: GroupSeries[] = useMemo(
+    () =>
+      (summary?.clubs ?? []).flatMap((clubSummary) => {
+        const landings = shots
+          .filter((s) => s.clubId === clubSummary.clubId && !s.discarded)
+          .flatMap((s) => (s.flight ? [s.flight.landing] : []));
+        if (landings.length === 0) return [];
+        return [
+          {
+            clubId: clubSummary.clubId,
+            color:
+              clubs.find((c) => c.id === clubSummary.clubId)?.tracerColor ??
+              DEFAULT_TRACER_COLOR,
+            landings,
+            dispersion: clubSummary.dispersion,
+          },
+        ];
+      }),
+    [summary, shots, clubs],
+  );
 
   if (!session) {
     return (
@@ -200,17 +228,36 @@ export default function SessionReviewScreen() {
                   height={180}
                 />
               </Card>
-              <SectionTitle title="Grouping (est.)" />
-              <Card>
-                <GroupingView
-                  shots={focusShots}
-                  dispersion={focusSummary.dispersion}
-                  width={vizWidth}
-                  height={260}
-                />
-              </Card>
             </>
           )}
+        </>
+      )}
+
+      {groupSeries.length > 0 && (
+        <>
+          <SectionTitle title="Grouping — all clubs (est.)" />
+          <Card>
+            <MultiGroupingView
+              series={groupSeries}
+              width={vizWidth}
+              height={260}
+            />
+            <View style={tw`mt-2 flex-row flex-wrap gap-x-4 gap-y-1`}>
+              {groupSeries.map((s) => (
+                <View key={s.clubId} style={tw`flex-row items-center gap-1.5`}>
+                  <View
+                    style={[
+                      tw`h-3 w-3 rounded-full`,
+                      { backgroundColor: s.color },
+                    ]}
+                  />
+                  <Text style={tw`text-xs text-ink`}>
+                    {clubs.find((c) => c.id === s.clubId)?.name ?? s.clubId}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </Card>
         </>
       )}
 

@@ -11,4 +11,5 @@ export * from './TrajectoryView';
 export * from './SimTracerView';
 export * from './TopDownView';
 export * from './GroupingView';
+export * from './MultiGroupingView';
 export * from './GappingView';

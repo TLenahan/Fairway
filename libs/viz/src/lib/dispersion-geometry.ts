@@ -127,3 +127,92 @@ export function buildGroupingGeometry(
     targetLineX: toScreen({ x: dispersion.centerX, z: 0 }).x,
   };
 }
+
+export interface GroupSeries {
+  clubId: string;
+  color: string;
+  landings: { x: number; z: number }[];
+  dispersion: Dispersion;
+}
+
+export interface GroupGeometry {
+  clubId: string;
+  color: string;
+  marks: LandingMark[];
+  center: ScreenPoint;
+  ellipse: DispersionEllipse | null;
+}
+
+export interface MultiGroupGeometry {
+  groups: GroupGeometry[];
+  targetLineX: number;
+}
+
+/**
+ * Overlay several groups' dispersions on ONE shared viewport so their
+ * patterns are directly comparable, each rendered in its own color. The
+ * shared bounds span every group's landing points; each group's marks and 1σ
+ * ellipse are projected into that common space.
+ */
+export function buildMultiGroupGeometry(
+  series: GroupSeries[],
+  size: GroupingSize,
+): MultiGroupGeometry {
+  const allLandings = series.flatMap((s) => s.landings);
+  const bounds: Bounds =
+    allLandings.length === 0
+      ? { minX: -10, maxX: 10, minY: 0, maxY: 10 }
+      : allLandings.reduce(
+          (b, p) => ({
+            minX: Math.min(b.minX, p.z),
+            maxX: Math.max(b.maxX, p.z),
+            minY: Math.min(b.minY, p.x),
+            maxY: Math.max(b.maxY, p.x),
+          }),
+          {
+            minX: -5,
+            maxX: 5,
+            minY: Number.POSITIVE_INFINITY,
+            maxY: Number.NEGATIVE_INFINITY,
+          },
+        );
+
+  const viewport = createViewport(bounds, {
+    width: size.width,
+    height: size.height,
+    padding: size.padding ?? 16,
+    preserveAspect: true,
+  });
+  const toScreen = (p: { x: number; z: number }): ScreenPoint =>
+    viewport.toScreen({ x: p.z, y: p.x });
+
+  const groups: GroupGeometry[] = series.map((s) => {
+    const center = toScreen({
+      x: s.dispersion.centerX,
+      z: s.dispersion.centerZ,
+    });
+    const hasEllipse =
+      s.landings.length >= 2 && s.dispersion.ellipseSemiMajorM > 0;
+    return {
+      clubId: s.clubId,
+      color: s.color,
+      marks: s.landings.map((landing) => ({
+        screen: toScreen(landing),
+        outlier: normalizedDistance(landing, s.dispersion) > OUTLIER_SIGMA,
+        landing,
+      })),
+      center,
+      ellipse: hasEllipse
+        ? {
+            cx: center.x,
+            cy: center.y,
+            rx: s.dispersion.ellipseSemiMajorM * viewport.scaleX,
+            ry: Math.max(s.dispersion.ellipseSemiMinorM * viewport.scaleY, 0.5),
+            rotationDeg: 90 - s.dispersion.ellipseAngleDeg,
+          }
+        : null,
+    };
+  });
+
+  return { groups, targetLineX: toScreen({ x: 0, z: 0 }).x };
+}
