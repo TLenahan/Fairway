@@ -23,15 +23,16 @@ interface SimTracerViewProps {
 }
 
 /**
- * Photo backdrop: "Driving range, Puttenham Golf Club, Surrey" by Mertbiol,
- * Wikimedia Commons, CC0 (public domain). Swap this JPEG for any other
- * behind-the-tee range photo — then re-measure where the horizon sits in the
- * frame and update PHOTO_HORIZON_FRACTION to match so the tracer's vanishing
- * point lands on the photo's. (The placeholder photo is sky-heavy in a
- * portrait crop — a clean idle frame from Uneekor VIEW is the intended
- * long-term backdrop.)
+ * Photo backdrop: Uneekor VIEW range scene (BG4), personal use. The image is
+ * shown resizeMode="cover" full-screen; on a portrait phone it fills height
+ * exactly, so PHOTO_HORIZON_FRACTION is simply the vertical fraction of the
+ * source frame where the fairway's ground plane vanishes (meets the far tree
+ * line down the middle). To swap backdrops: replace assets/range-photo.jpg
+ * and re-measure that line.
  */
-const PHOTO_HORIZON_FRACTION = 0.85;
+const PHOTO_HORIZON_FRACTION = 0.46;
+/** BG4 backdrop native aspect (1920×1080). */
+const BACKDROP_ASPECT = 16 / 9;
 
 const DEFAULT_TRACER_CORE = '#ff4136'; // VIEW-style red arc
 const TRACER_GLOW = '#ffffff';
@@ -110,12 +111,24 @@ export function SimTracerView({
     outputRange: [0, 0, 1],
   });
 
+  // Fill full height, center horizontally: RN's resizeMode="cover" was
+  // left-anchoring the wide backdrop. Size the image to the container height
+  // at its native 16:9 aspect and offset so the overflow is split evenly.
+  const imageWidth = height * BACKDROP_ASPECT;
+  const imageLeft = (width - imageWidth) / 2;
+
   return (
     <View style={{ height, overflow: 'hidden', width }}>
       <Image
         source={rangePhoto}
-        resizeMode="cover"
-        style={StyleSheet.absoluteFill}
+        resizeMode="stretch"
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: imageLeft,
+          width: imageWidth,
+          height,
+        }}
       />
       {result !== null && (
         <Svg width={width} height={height} style={StyleSheet.absoluteFill}>

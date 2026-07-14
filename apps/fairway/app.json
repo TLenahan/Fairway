@@ -4,7 +4,7 @@
     "slug": "fairway",
     "scheme": "fairway",
     "version": "0.1.0",
-    "orientation": "default",
+    "orientation": "portrait",
     "newArchEnabled": true,
     "userInterfaceStyle": "automatic",
     "platforms": [
