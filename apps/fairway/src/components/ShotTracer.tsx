@@ -7,9 +7,19 @@ import { Text, View } from 'react-native';
 interface ShotTracerProps {
   /** newest first (the live session list order) */
   sessionShots: ShotRecord[];
+  /** px to lift bottom-anchored overlays (floating tile strip height) */
+  overlayBottomOffset?: number;
+  /** px to drop top-anchored overlays (floating buttons / notch) */
+  overlayTopOffset?: number;
 }
 
 const MAX_GHOSTS = 5;
+
+const LABEL_SHADOW = {
+  textShadowColor: 'rgba(0,0,0,0.75)',
+  textShadowOffset: { height: 1, width: 0 },
+  textShadowRadius: 4,
+} as const;
 
 /**
  * Sim-style tracer that fills whatever space its parent gives it: side-view
@@ -17,7 +27,11 @@ const MAX_GHOSTS = 5;
  * inset, VIEW/Trackman style. All COMPUTED (est.) — measured numbers live in
  * the tile strip.
  */
-export function ShotTracer({ sessionShots }: ShotTracerProps) {
+export function ShotTracer({
+  sessionShots,
+  overlayBottomOffset = 0,
+  overlayTopOffset = 0,
+}: ShotTracerProps) {
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   const latest = sessionShots.find((s) => !s.discarded && s.flight !== null);
@@ -66,24 +80,28 @@ export function ShotTracer({ sessionShots }: ShotTracerProps) {
             <>
               <View
                 style={[
-                  tw`absolute bottom-1 right-1 rounded-xl border border-green-100 bg-white/90`,
-                  { width: size.width * 0.3, height: size.height * 0.52 },
+                  tw`absolute right-2 rounded-xl border border-white/40 bg-white/85`,
+                  { bottom: 8 + overlayBottomOffset },
+                  { width: size.width * 0.32, height: size.height * 0.2 },
                 ]}
               >
                 <TopDownView
                   result={latest.flight}
                   launchDirectionDeg={latest.measured.ball.launchDirectionDeg}
-                  width={size.width * 0.3}
-                  height={size.height * 0.52}
+                  width={size.width * 0.32}
+                  height={size.height * 0.2}
                 />
               </View>
               <View
-                style={tw`absolute left-2 top-1 flex-row items-center gap-2`}
+                style={[
+                  tw`absolute left-4 flex-row items-center gap-2`,
+                  { top: overlayTopOffset },
+                ]}
               >
-                <Text style={tw`text-base font-semibold text-green-700`}>
+                <Text style={[tw`text-lg font-bold text-white`, LABEL_SHADOW]}>
                   {shape}
                 </Text>
-                <Text style={tw`text-xs text-computed`}>
+                <Text style={[tw`text-xs text-white/85`, LABEL_SHADOW]}>
                   {ghosts.length > 0 ? `${ghosts.length} ghosts · ` : ''}est.
                 </Text>
               </View>
@@ -91,7 +109,10 @@ export function ShotTracer({ sessionShots }: ShotTracerProps) {
           )}
           {!latest?.flight && (
             <Text
-              style={tw`absolute inset-x-0 top-2 text-center text-xs text-white/90`}
+              style={[
+                tw`absolute inset-x-0 text-center text-xs text-white/90`,
+                { top: overlayTopOffset },
+              ]}
             >
               Hit a ball — the tracer draws here
             </Text>

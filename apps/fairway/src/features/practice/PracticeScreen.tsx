@@ -1,19 +1,27 @@
-import { Button, tw } from '@golf/ui';
+import { tw } from '@golf/ui';
 import { useKeepAwake } from 'expo-keep-awake';
-import { Link } from 'expo-router';
-import { useEffect } from 'react';
-import { PermissionsAndroid, Platform, Text, View } from 'react-native';
+import { Menu } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
+import {
+  PermissionsAndroid,
+  Platform,
+  Pressable,
+  Text,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ConnectionDot } from '@/components/ConnectionDot';
-import { ClubPicker } from '@/components/ClubPicker';
 import { MetricTileStrip } from '@/components/MetricTileStrip';
+import { PracticeDrawer } from '@/components/PracticeDrawer';
 import { ShotTracer } from '@/components/ShotTracer';
-import { useFairwayStore, useServices, useSettings } from '@/services/context';
+import { useFairwayStore, useServices } from '@/services/context';
+
+const TILE_STRIP_HEIGHT = 96;
 
 /**
- * Sim-style practice display (VIEW/Trackman layout): tracer fills the top of
- * the screen, measured/computed data tiles strip along the bottom. Fixed
- * layout — built to be glanced at between swings, not scrolled.
+ * Immersive practice view: the tracer photo fills the whole screen; the only
+ * chrome is a floating hamburger (drawer holds connect/session/clubs/nav), a
+ * status chip, and the chromeless data tiles floating along the bottom.
  */
 export default function PracticeScreen() {
   // display stays on while practicing; with the screen off the keep-alive
@@ -26,15 +34,15 @@ export default function PracticeScreen() {
       void PermissionsAndroid.request('android.permission.POST_NOTIFICATIONS');
     }
   }, []);
+
+  const insets = useSafeAreaInsets();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { data, store } = useServices();
   const connection = useFairwayStore((s) => s.connection);
   const ballReady = useFairwayStore((s) => s.ballReady);
   const lastShot = useFairwayStore((s) => s.lastShot);
   const sessionShots = useFairwayStore((s) => s.sessionShots);
-  const session = useFairwayStore((s) => s.session);
-  const startSession = useFairwayStore((s) => s.startSession);
-  const endSession = useFairwayStore((s) => s.endSession);
-  const environment = useSettings((s) => s.environment);
+  const activeClub = useFairwayStore((s) => s.activeClub);
 
   const latest = sessionShots[0] ?? null;
 
@@ -51,93 +59,87 @@ export default function PracticeScreen() {
     });
   };
 
+  const statusText =
+    connection === 'connected'
+      ? `${activeClub?.name ?? 'No club'} · ${sessionShots.length}`
+      : connection === 'connecting' || connection === 'discovering'
+        ? 'Connecting…'
+        : 'Not connected';
+
+  const tilesBottom = insets.bottom + 6;
+
   return (
-    <View style={tw`flex-1 bg-ivory`}>
-      {/* header: connection + nav */}
-      <View style={tw`flex-row items-center justify-between px-4 pt-2`}>
-        {connection === 'connected' ? (
-          <Link href="/connect">
-            <ConnectionDot state={connection} />
-          </Link>
-        ) : (
-          <Link href="/connect" asChild>
-            <Button
-              label={
-                connection === 'connecting' || connection === 'discovering'
-                  ? 'Connecting…'
-                  : 'Connect to EYE MINI'
-              }
-              compact
-              variant="secondary"
-              onPress={() => undefined}
-            />
-          </Link>
-        )}
-        <View style={tw`flex-row items-center gap-3`}>
-          <Link href="/sessions" style={tw`text-sm font-medium text-green-700`}>
-            Sessions
-          </Link>
-          <Link href="/settings" style={tw`text-sm font-medium text-green-700`}>
-            Settings
-          </Link>
-        </View>
+    <View style={tw`flex-1 bg-ink`}>
+      {/* full-screen tracer scene */}
+      <View style={tw`absolute inset-0`}>
+        <ShotTracer
+          sessionShots={sessionShots}
+          overlayTopOffset={insets.top + 64}
+          overlayBottomOffset={TILE_STRIP_HEIGHT + tilesBottom}
+        />
       </View>
 
-      {/* tracer fills the top portion */}
-      <ShotTracer sessionShots={sessionShots} />
+      {/* floating hamburger */}
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setDrawerOpen(true)}
+        style={({ pressed }) => [
+          tw.style(
+            'absolute left-4 z-10 h-11 w-11 items-center justify-center rounded-full bg-ink/60',
+            pressed && 'opacity-70',
+          ),
+          { top: insets.top + 8 },
+        ]}
+      >
+        <Menu color="#ffffff" size={22} />
+      </Pressable>
 
-      {/* status strip */}
-      <View style={tw`flex-row items-center justify-between px-4 py-1`}>
-        <View style={tw`flex-row items-center gap-2`}>
-          <View
-            style={tw.style(
-              'h-3 w-3 rounded-full',
-              ballReady ? 'bg-green-500' : 'bg-silver',
-            )}
-          />
-          <Text style={tw`text-xs text-ink`}>
-            {ballReady ? 'Ready' : 'No ball'}
-            {session ? ` · ${sessionShots.length} shots` : ''}
-          </Text>
-        </View>
-        <View style={tw`flex-row items-center gap-2`}>
-          {latest && !latest.discarded && (
-            <Button
-              label="Discard last"
-              variant="ghost"
-              compact
-              onPress={() => void discardLatest()}
-            />
+      {/* floating status chip */}
+      <View
+        style={[
+          tw`absolute right-4 z-10 flex-row items-center gap-2 rounded-full bg-ink/60 px-3 py-2`,
+          { top: insets.top + 12 },
+        ]}
+      >
+        <View
+          style={tw.style(
+            'h-2.5 w-2.5 rounded-full',
+            connection === 'connected'
+              ? ballReady
+                ? 'bg-green-300'
+                : 'bg-gold-300'
+              : 'bg-silver',
           )}
-          {session ? (
-            <Button
-              label="End session"
-              variant="ghost"
-              compact
-              onPress={() => void endSession()}
-            />
-          ) : (
-            <Button
-              label="Start session"
-              compact
-              onPress={() => void startSession(environment)}
-            />
-          )}
-        </View>
+        />
+        <Text style={tw`text-xs font-medium text-white`}>{statusText}</Text>
       </View>
 
-      {/* club row */}
-      <View style={tw`px-3`}>
-        <ClubPicker />
-      </View>
+      {/* discard last, floating above the tiles */}
+      {latest && !latest.discarded && (
+        <Pressable
+          onPress={() => void discardLatest()}
+          style={({ pressed }) => [
+            tw.style(
+              'absolute left-4 z-10 rounded-full bg-ink/60 px-3 py-1.5',
+              pressed && 'opacity-70',
+            ),
+            { bottom: tilesBottom + TILE_STRIP_HEIGHT + 8 },
+          ]}
+        >
+          <Text style={tw`text-xs font-medium text-white`}>Discard last</Text>
+        </Pressable>
+      )}
 
-      {/* data tiles along the bottom */}
-      <View style={tw`pb-2 pt-1`}>
+      {/* chromeless data tiles floating over the backdrop */}
+      <View style={[tw`absolute inset-x-0`, { bottom: tilesBottom }]}>
         <MetricTileStrip
           measured={lastShot}
           flight={latest && !latest.discarded ? latest.flight : null}
+          floating
         />
       </View>
+
+      <PracticeDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </View>
   );
 }

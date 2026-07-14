@@ -15,9 +15,17 @@ import {
 } from '@/lib/format';
 import { useSettings } from '@/services/context';
 
+const SHADOW_STYLE = {
+  textShadowColor: 'rgba(0,0,0,0.75)',
+  textShadowOffset: { height: 1, width: 0 },
+  textShadowRadius: 4,
+} as const;
+
 interface MetricTileStripProps {
   measured: MeasuredShot | null;
   flight: FlightResult | null;
+  /** chromeless: white text floating over the backdrop, no tile cards */
+  floating?: boolean;
 }
 
 interface Tile {
@@ -31,7 +39,11 @@ interface Tile {
  * VIEW/Trackman-style bottom data strip: one horizontal row of big tiles.
  * Null = em dash (never a fake 0); flight-model values carry est. styling.
  */
-export function MetricTileStrip({ measured, flight }: MetricTileStripProps) {
+export function MetricTileStrip({
+  measured,
+  flight,
+  floating = false,
+}: MetricTileStripProps) {
   const speedUnit = useSettings((s) => s.speedUnit);
   const distanceUnit = useSettings((s) => s.distanceUnit);
   const speed = speedUnitLabel[speedUnit];
@@ -97,9 +109,14 @@ export function MetricTileStrip({ measured, flight }: MetricTileStripProps) {
 
   if (!measured) {
     return (
-      <View style={tw`h-24 items-center justify-center`}>
-        <Text style={tw`text-silver`}>
-          Measured data tiles appear here after the first shot.
+      <View style={tw`h-20 items-center justify-center`}>
+        <Text
+          style={[
+            tw.style(floating ? 'text-white/90' : 'text-silver'),
+            floating && SHADOW_STYLE,
+          ]}
+        >
+          Measured data appears here after the first shot.
         </Text>
       </View>
     );
@@ -114,32 +131,72 @@ export function MetricTileStrip({ measured, flight }: MetricTileStripProps) {
       {tiles.map((tile) => (
         <View
           key={tile.label}
-          style={tw`w-24 items-center rounded-2xl border border-green-100 bg-white px-2 py-3`}
+          style={tw.style(
+            'w-24 items-center px-2',
+            floating
+              ? 'py-1.5'
+              : 'rounded-2xl border border-green-100 bg-white py-3',
+          )}
         >
           <View style={tw`flex-row items-center gap-1`}>
-            <Text style={tw`text-[11px] uppercase tracking-wide text-silver`}>
+            <Text
+              style={[
+                tw.style(
+                  'text-[11px] uppercase tracking-wide',
+                  floating ? 'text-white/85' : 'text-silver',
+                ),
+                floating && SHADOW_STYLE,
+              ]}
+            >
               {tile.label}
             </Text>
             {tile.estimate && (
-              <Text style={tw`text-[9px] font-semibold text-computed`}>
+              <Text
+                style={[
+                  tw.style(
+                    'text-[9px] font-semibold',
+                    floating ? 'text-gold-300' : 'text-computed',
+                  ),
+                  floating && SHADOW_STYLE,
+                ]}
+              >
                 est.
               </Text>
             )}
           </View>
           <Text
-            style={tw.style(
-              'mt-1 text-2xl font-bold',
-              tile.value === null
-                ? 'text-silver'
-                : tile.estimate
-                  ? 'text-computed'
-                  : 'text-ink',
-            )}
+            style={[
+              tw.style(
+                'mt-1 text-2xl font-bold',
+                tile.value === null
+                  ? floating
+                    ? 'text-white/50'
+                    : 'text-silver'
+                  : tile.estimate
+                    ? floating
+                      ? 'text-gold-300'
+                      : 'text-computed'
+                    : floating
+                      ? 'text-white'
+                      : 'text-ink',
+              ),
+              floating && SHADOW_STYLE,
+            ]}
           >
             {tile.value ?? '—'}
           </Text>
           {tile.value !== null && tile.unit && (
-            <Text style={tw`text-[10px] text-silver`}>{tile.unit}</Text>
+            <Text
+              style={[
+                tw.style(
+                  'text-[10px]',
+                  floating ? 'text-white/75' : 'text-silver',
+                ),
+                floating && SHADOW_STYLE,
+              ]}
+            >
+              {tile.unit}
+            </Text>
           )}
         </View>
       ))}
