@@ -12,12 +12,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MetricTileStrip } from '@/components/MetricTileStrip';
+import {
+  METRIC_TILE_STRIP_HEIGHT,
+  MetricTileStrip,
+} from '@/components/MetricTileStrip';
 import { PracticeDrawer } from '@/components/PracticeDrawer';
 import { ShotTracer } from '@/components/ShotTracer';
 import { useFairwayStore, useServices } from '@/services/context';
-
-const TILE_STRIP_HEIGHT = 96;
 
 /**
  * Immersive practice view: the tracer photo fills the whole screen; the only
@@ -76,7 +77,7 @@ export default function PracticeScreen() {
         <ShotTracer
           sessionShots={sessionShots}
           overlayTopOffset={insets.top + 64}
-          overlayBottomOffset={TILE_STRIP_HEIGHT + tilesBottom}
+          overlayBottomOffset={METRIC_TILE_STRIP_HEIGHT + tilesBottom}
           tracerColor={activeClub?.tracerColor ?? DEFAULT_TRACER_COLOR}
         />
       </View>
@@ -125,7 +126,7 @@ export default function PracticeScreen() {
               'absolute left-4 z-10 rounded-full bg-ink/60 px-3 py-1.5',
               pressed && 'opacity-70',
             ),
-            { bottom: tilesBottom + TILE_STRIP_HEIGHT + 8 },
+            { bottom: tilesBottom + METRIC_TILE_STRIP_HEIGHT + 8 },
           ]}
         >
           <Text style={tw`text-xs font-medium text-white`}>Discard last</Text>

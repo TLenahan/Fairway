@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { createStore } from 'zustand/vanilla';
 
 import { DEFAULT_ENVIRONMENT } from '../constants/environments';
+import { METRIC_TILE_KEYS } from '../constants/metric-tiles';
 
 /**
  * App settings (BUILD_SPEC F9), persisted in expo-sqlite's key-value store.
@@ -24,6 +25,10 @@ export const SettingsSchema = z.object({
   analysisModel: z.string(),
   deepAnalysis: z.boolean(),
   savedDeviceIp: z.string().nullable(),
+  // lenient on purpose: unknown/missing keys are reconciled at render by
+  // sanitizeTileOrder, and the default keeps pre-existing saved settings
+  // parsing after this field was added
+  tileOrder: z.array(z.string()).default([...METRIC_TILE_KEYS]),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -35,6 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   analysisModel: 'claude-sonnet-5',
   deepAnalysis: false,
   savedDeviceIp: null,
+  tileOrder: [...METRIC_TILE_KEYS],
 };
 
 const STORAGE_KEY = 'fairway.settings.v1';
@@ -67,6 +73,7 @@ const settingsOf = (state: SettingsState): Settings =>
     analysisModel: state.analysisModel,
     deepAnalysis: state.deepAnalysis,
     savedDeviceIp: state.savedDeviceIp,
+    tileOrder: state.tileOrder,
   });
 
 export async function loadSettings(): Promise<Settings> {
