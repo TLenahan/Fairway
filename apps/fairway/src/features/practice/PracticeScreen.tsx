@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
+  METRIC_TILE_STRIP_EXPANDED_HEIGHT,
   METRIC_TILE_STRIP_HEIGHT,
   MetricTileStrip,
 } from '@/components/MetricTileStrip';
@@ -85,6 +86,7 @@ export default function PracticeScreen() {
 
   const insets = useSafeAreaInsets();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [tilesExpanded, setTilesExpanded] = useState(false);
   const { data, store } = useServices();
   const connection = useFairwayStore((s) => s.connection);
   const ballReady = useFairwayStore((s) => s.ballReady);
@@ -165,6 +167,11 @@ export default function PracticeScreen() {
         : 'Not connected';
 
   const tilesBottom = insets.bottom + 6;
+  // overlays just above the strip follow its current height; the strip's
+  // LayoutAnimation covers this move too, so they slide together
+  const stripHeight = tilesExpanded
+    ? METRIC_TILE_STRIP_EXPANDED_HEIGHT
+    : METRIC_TILE_STRIP_HEIGHT;
 
   return (
     <View style={tw`flex-1 bg-ink`}>
@@ -246,7 +253,7 @@ export default function PracticeScreen() {
               'absolute left-4 z-10 rounded-full bg-ink/60 px-3 py-1.5',
               pressed && 'opacity-70',
             ),
-            { bottom: tilesBottom + METRIC_TILE_STRIP_HEIGHT + 8 },
+            { bottom: tilesBottom + stripHeight + 8 },
           ]}
         >
           <Text style={tw`text-xs font-medium text-white`}>Discard last</Text>
@@ -259,6 +266,7 @@ export default function PracticeScreen() {
           measured={lastShot}
           flight={latest && !latest.discarded ? latest.flight : null}
           floating
+          onExpandedChange={setTilesExpanded}
         />
       </View>
 

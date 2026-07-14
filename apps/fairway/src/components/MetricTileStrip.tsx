@@ -12,14 +12,18 @@ import {
 import {
   Animated,
   LayoutAnimation,
-  LayoutChangeEvent,
   PanResponder,
   Pressable,
   Text,
   View,
+  useWindowDimensions,
 } from 'react-native';
 
-import { MetricTileKey, sanitizeTileOrder } from '@/constants/metric-tiles';
+import {
+  METRIC_TILE_KEYS,
+  MetricTileKey,
+  sanitizeTileOrder,
+} from '@/constants/metric-tiles';
 import {
   apexUnitLabel,
   distanceUnitLabel,
@@ -39,22 +43,32 @@ const SHADOW_STYLE = {
   textShadowRadius: 4,
 } as const;
 
-// slot geometry must match the tile classes below: w-24 (96) + gap-2 (8);
-// tile height is fixed so every grid row is the same size and drag math can
-// treat the wrapped layout as uniform slots
-const TILE_WIDTH = 96;
+// the strip is always GRID_COLUMNS tiles wide: tile width is derived from the
+// window so exactly one row fills the collapsed strip edge-to-edge; tile
+// height is fixed so every grid row is the same size and drag math can treat
+// the wrapped layout as uniform slots
+const GRID_COLUMNS = 4;
 const TILE_HEIGHT = 88;
 const TILE_GAP = 8;
-const SLOT_WIDTH = TILE_WIDTH + TILE_GAP;
 const SLOT_HEIGHT = TILE_HEIGHT + TILE_GAP;
 const GRID_H_PADDING = 12; // px-3
 const CHEVRON_HEIGHT = 28; // h-7
 const CHEVRON_GAP = 4; // mb-1
 const STRIP_BOTTOM_PADDING = 4; // pb-1
 
+const GRID_ROWS = Math.ceil(METRIC_TILE_KEYS.length / GRID_COLUMNS);
+
 /** collapsed strip height, for the practice screen's overlay offsets */
 export const METRIC_TILE_STRIP_HEIGHT =
   CHEVRON_HEIGHT + CHEVRON_GAP + TILE_HEIGHT + STRIP_BOTTOM_PADDING;
+
+/** expanded strip height: the full grid of all tiles */
+export const METRIC_TILE_STRIP_EXPANDED_HEIGHT =
+  CHEVRON_HEIGHT +
+  CHEVRON_GAP +
+  GRID_ROWS * TILE_HEIGHT +
+  (GRID_ROWS - 1) * TILE_GAP +
+  STRIP_BOTTOM_PADDING;
 
 const SPRING = { friction: 9, tension: 80, useNativeDriver: true } as const;
 
@@ -66,6 +80,8 @@ interface MetricTileStripProps {
   flight: FlightResult | null;
   /** chromeless: white text floating over the backdrop, no tile cards */
   floating?: boolean;
+  /** fires on chevron toggle so the parent can move overlays out of the way */
+  onExpandedChange?(expanded: boolean): void;
 }
 
 interface Tile {
@@ -94,8 +110,13 @@ interface TileDragController {
 function useTileDrag(
   order: MetricTileKey[],
   commitOrder: (next: MetricTileKey[]) => void,
+  tileWidth: number,
 ) {
-  const columns = useRef(1);
+  // width changes on rotation; a ref keeps the memoized controller current
+  const slotWidth = useRef(tileWidth + TILE_GAP);
+  useEffect(() => {
+    slotWidth.current = tileWidth + TILE_GAP;
+  }, [tileWidth]);
 
   const orderRef = useRef(order);
   useEffect(() => {
@@ -134,8 +155,8 @@ function useTileDrag(
 
   const controller = useMemo<TileDragController>(() => {
     const slotPos = (index: number) => ({
-      x: (index % columns.current) * SLOT_WIDTH,
-      y: Math.floor(index / columns.current) * SLOT_HEIGHT,
+      x: (index % GRID_COLUMNS) * slotWidth.current,
+      y: Math.floor(index / GRID_COLUMNS) * SLOT_HEIGHT,
     });
 
     // where tile i sits once the dragged tile moves from -> to
@@ -206,15 +227,15 @@ function useTileDrag(
         if (!dragging.current) return;
         dragXY.setValue({ x: dx, y: dy });
         const count = orderRef.current.length;
-        const rows = Math.ceil(count / columns.current);
+        const rows = Math.ceil(count / GRID_COLUMNS);
         const base = slotPos(fromIndex.current);
         const col = clamp(
-          Math.round((base.x + dx) / SLOT_WIDTH),
+          Math.round((base.x + dx) / slotWidth.current),
           0,
-          columns.current - 1,
+          GRID_COLUMNS - 1,
         );
         const row = clamp(Math.round((base.y + dy) / SLOT_HEIGHT), 0, rows - 1);
-        const proposed = Math.min(row * columns.current + col, count - 1);
+        const proposed = Math.min(row * GRID_COLUMNS + col, count - 1);
         if (proposed !== proposedIndex.current) {
           proposedIndex.current = proposed;
           applyShifts();
@@ -260,27 +281,19 @@ function useTileDrag(
     setDragKey(null);
   }, [order, dragXY, liftScale, shiftValues]);
 
-  const onGridLayout = useCallback((event: LayoutChangeEvent) => {
-    const available = event.nativeEvent.layout.width - GRID_H_PADDING * 2;
-    columns.current = Math.max(
-      1,
-      Math.floor((available + TILE_GAP) / SLOT_WIDTH),
-    );
-  }, []);
-
   return {
     dragKey,
     dragXY,
     liftScale,
     shiftValueFor,
     controller,
-    onGridLayout,
   };
 }
 
 interface DraggableTileProps {
   tile: Tile;
   index: number;
+  width: number;
   floating: boolean;
   dragEnabled: boolean;
   isDragging: boolean;
@@ -293,6 +306,7 @@ interface DraggableTileProps {
 function DraggableTile({
   tile,
   index,
+  width,
   floating,
   dragEnabled,
   isDragging,
@@ -330,13 +344,13 @@ function DraggableTile({
       <View
         style={[
           tw.style(
-            'w-24 items-center justify-center rounded-2xl px-2',
+            'items-center justify-center rounded-2xl px-2',
             // translucent scrim: readable over sky and turf without the
             // solid-white-card look
             floating ? 'bg-ink/40' : 'border border-green-100 bg-white',
             isDragging && (floating ? 'bg-ink/70' : 'border-green-300'),
           ),
-          { height: TILE_HEIGHT },
+          { height: TILE_HEIGHT, width },
         ]}
       >
         <View style={tw`flex-row items-center gap-1`}>
@@ -405,15 +419,16 @@ function DraggableTile({
 }
 
 /**
- * VIEW/Trackman-style bottom data strip: one row of big tiles, clipped to the
- * screen. Null = em dash (never a fake 0); flight-model values carry est.
- * styling. The chevron expands the strip into a grid of all tiles, where
- * drag-and-drop rearranges them; the order persists in settings.
+ * VIEW/Trackman-style bottom data strip: one row of GRID_COLUMNS tiles sized
+ * to fill the screen width. Null = em dash (never a fake 0); flight-model
+ * values carry est. styling. The chevron expands the strip into a grid of all
+ * tiles, where drag-and-drop rearranges them; the order persists in settings.
  */
 export function MetricTileStrip({
   measured,
   flight,
   floating = false,
+  onExpandedChange,
 }: MetricTileStripProps) {
   const speedUnit = useSettings((s) => s.speedUnit);
   const distanceUnit = useSettings((s) => s.distanceUnit);
@@ -422,18 +437,26 @@ export function MetricTileStrip({
   const speed = speedUnitLabel[speedUnit];
   const distance = distanceUnitLabel[distanceUnit];
 
+  // the strip spans the window (absolute inset-x-0 on the practice screen)
+  const { width: windowWidth } = useWindowDimensions();
+  const tileWidth =
+    (windowWidth - GRID_H_PADDING * 2 - TILE_GAP * (GRID_COLUMNS - 1)) /
+    GRID_COLUMNS;
+
   const [expanded, setExpanded] = useState(false);
   const order = useMemo(() => sanitizeTileOrder(tileOrder), [tileOrder]);
   const commitOrder = useCallback(
     (next: MetricTileKey[]) => updateSettings({ tileOrder: next }),
     [updateSettings],
   );
-  const drag = useTileDrag(order, commitOrder);
+  const drag = useTileDrag(order, commitOrder, tileWidth);
 
   const toggleExpanded = () => {
     if (drag.dragKey !== null) return; // never collapse under an active drag
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded((current) => !current);
+    const next = !expanded;
+    setExpanded(next);
+    onExpandedChange?.(next);
   };
 
   if (!measured) {
@@ -505,7 +528,6 @@ export function MetricTileStrip({
       estimate: true,
     },
     path: { label: 'Path', value: formatDegrees(measured.club.pathDeg) },
-    face: { label: 'Face', value: formatDegrees(measured.club.faceAngleDeg) },
     attack: {
       label: 'Attack',
       value: formatDegrees(measured.club.attackAngleDeg),
@@ -535,17 +557,17 @@ export function MetricTileStrip({
         />
       </Pressable>
       <View
-        onLayout={drag.onGridLayout}
         style={tw.style(
           'flex-row gap-2 px-3 pb-1',
           expanded ? 'flex-wrap' : 'overflow-hidden',
         )}
       >
-        {order.map((key, index) => (
+        {(expanded ? order : order.slice(0, GRID_COLUMNS)).map((key, index) => (
           <DraggableTile
             key={key}
             tile={tileByKey[key]}
             index={index}
+            width={tileWidth}
             floating={floating}
             dragEnabled={expanded}
             isDragging={drag.dragKey === key}
