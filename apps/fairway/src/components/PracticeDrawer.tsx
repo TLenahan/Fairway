@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ClubPicker } from '@/components/ClubPicker';
 import { ConnectionDot } from '@/components/ConnectionDot';
-import { useFairwayStore, useSettings } from '@/services/context';
+import { useFairwayStore, useServices, useSettings } from '@/services/context';
 
 interface PracticeDrawerProps {
   open: boolean;
@@ -19,6 +19,7 @@ interface PracticeDrawerProps {
 export function PracticeDrawer({ open, onClose }: PracticeDrawerProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { data, store } = useServices();
   const connection = useFairwayStore((s) => s.connection);
   const disconnect = useFairwayStore((s) => s.disconnect);
   const session = useFairwayStore((s) => s.session);
@@ -30,6 +31,21 @@ export function PracticeDrawer({ open, onClose }: PracticeDrawerProps) {
   const go = (href: '/connect' | '/sessions' | '/settings') => {
     onClose();
     router.push(href);
+  };
+
+  const latest = sessionShots[0] ?? null;
+
+  const discardLatest = async () => {
+    if (!latest) return;
+    await data.setShotDiscarded(latest.id, true);
+    store.setState({
+      sessionShots: store
+        .getState()
+        .sessionShots.map((s) =>
+          s.id === latest.id ? { ...s, discarded: true } : s,
+        ),
+      lastShot: null,
+    });
   };
 
   return (
@@ -71,19 +87,32 @@ export function PracticeDrawer({ open, onClose }: PracticeDrawerProps) {
 
             <SectionTitle title="Session" />
             {session ? (
-              <View style={tw`flex-row items-center justify-between`}>
-                <Text style={tw`text-sm text-ink`}>
-                  {sessionShots.length} shots
-                </Text>
-                <Button
-                  label="End session"
-                  variant="ghost"
-                  compact
-                  onPress={() => {
-                    void endSession();
-                    onClose();
-                  }}
-                />
+              <View style={tw`gap-2`}>
+                <View style={tw`flex-row items-center justify-between`}>
+                  <Text style={tw`text-sm text-ink`}>
+                    {sessionShots.length} shots
+                  </Text>
+                  <Button
+                    label="End session"
+                    variant="ghost"
+                    compact
+                    onPress={() => {
+                      void endSession();
+                      onClose();
+                    }}
+                  />
+                </View>
+                {latest && !latest.discarded && (
+                  <Button
+                    label="Discard last shot"
+                    variant="ghost"
+                    compact
+                    onPress={() => {
+                      void discardLatest();
+                      onClose();
+                    }}
+                  />
+                )}
               </View>
             ) : (
               <Button

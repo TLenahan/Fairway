@@ -19,11 +19,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 
-import {
-  METRIC_TILE_KEYS,
-  MetricTileKey,
-  sanitizeTileOrder,
-} from '@/constants/metric-tiles';
+import { MetricTileKey, sanitizeTileOrder } from '@/constants/metric-tiles';
 import {
   apexUnitLabel,
   distanceUnitLabel,
@@ -56,19 +52,9 @@ const CHEVRON_HEIGHT = 28; // h-7
 const CHEVRON_GAP = 4; // mb-1
 const STRIP_BOTTOM_PADDING = 4; // pb-1
 
-const GRID_ROWS = Math.ceil(METRIC_TILE_KEYS.length / GRID_COLUMNS);
-
 /** collapsed strip height, for the practice screen's overlay offsets */
 export const METRIC_TILE_STRIP_HEIGHT =
   CHEVRON_HEIGHT + CHEVRON_GAP + TILE_HEIGHT + STRIP_BOTTOM_PADDING;
-
-/** expanded strip height: the full grid of all tiles */
-export const METRIC_TILE_STRIP_EXPANDED_HEIGHT =
-  CHEVRON_HEIGHT +
-  CHEVRON_GAP +
-  GRID_ROWS * TILE_HEIGHT +
-  (GRID_ROWS - 1) * TILE_GAP +
-  STRIP_BOTTOM_PADDING;
 
 const SPRING = { friction: 9, tension: 80, useNativeDriver: true } as const;
 
@@ -80,8 +66,6 @@ interface MetricTileStripProps {
   flight: FlightResult | null;
   /** chromeless: white text floating over the backdrop, no tile cards */
   floating?: boolean;
-  /** fires on chevron toggle so the parent can move overlays out of the way */
-  onExpandedChange?(expanded: boolean): void;
 }
 
 interface Tile {
@@ -428,7 +412,6 @@ export function MetricTileStrip({
   measured,
   flight,
   floating = false,
-  onExpandedChange,
 }: MetricTileStripProps) {
   const speedUnit = useSettings((s) => s.speedUnit);
   const distanceUnit = useSettings((s) => s.distanceUnit);
@@ -454,9 +437,7 @@ export function MetricTileStrip({
   const toggleExpanded = () => {
     if (drag.dragKey !== null) return; // never collapse under an active drag
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    const next = !expanded;
-    setExpanded(next);
-    onExpandedChange?.(next);
+    setExpanded((current) => !current);
   };
 
   if (!measured) {
