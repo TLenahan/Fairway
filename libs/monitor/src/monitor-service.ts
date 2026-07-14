@@ -94,6 +94,7 @@ export class EyeMiniMonitor implements MonitorService {
   private event: TcpConnection | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private eventReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelayMs: number;
   private reqId = 0;
   private pollTick = 0;
@@ -304,13 +305,50 @@ export class EyeMiniMonitor implements MonitorService {
 
   private handleChannelDrop(port: number): void {
     if (this.intentionalDisconnect || this.state !== 'connected') return;
-    // the event channel dropping alone is survivable; the control channel
-    // dropping kills polling — reconnect either way (the Mini sleeps)
-    if (port === EVENT_PORT && this.control) return;
+    // Event channel dropped alone (control + polling still fine): shots live
+    // on this channel, so re-establish it. Without this the app stays
+    // "connected" but silently records nothing until a manual reconnect —
+    // the exact failure seen when the Mini sleeps and wakes.
+    if (port === EVENT_PORT && this.control) {
+      this.event = null;
+      this.scheduleEventReconnect();
+      return;
+    }
+    // Control channel dropped: full reconnect (the Mini sleeps).
     this.stopPolling();
     this.teardownSockets();
     this.setState('disconnected');
     this.scheduleReconnect();
+  }
+
+  private scheduleEventReconnect(): void {
+    if (this.eventReconnectTimer !== null) return;
+    this.eventReconnectTimer = setTimeout(() => {
+      this.eventReconnectTimer = null;
+      void this.openEventChannel();
+    }, this.reconnectInitialMs);
+  }
+
+  /** (Re)open the event channel while control stays up; retries while connected. */
+  private async openEventChannel(): Promise<void> {
+    if (
+      this.intentionalDisconnect ||
+      this.state !== 'connected' ||
+      this.lastIp === null
+    ) {
+      return;
+    }
+    try {
+      const event = await this.tcp.connect({
+        host: this.lastIp,
+        port: EVENT_PORT,
+        timeoutMs: this.connectTimeoutMs,
+      });
+      this.event = event;
+      this.attachChannel(event, EVENT_PORT);
+    } catch {
+      this.scheduleEventReconnect();
+    }
   }
 
   private scheduleReconnect(): void {
@@ -330,6 +368,9 @@ export class EyeMiniMonitor implements MonitorService {
   private clearReconnect(): void {
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+    if (this.eventReconnectTimer !== null)
+      clearTimeout(this.eventReconnectTimer);
+    this.eventReconnectTimer = null;
   }
 
   private handleMessage(msg: WireMessage): void {

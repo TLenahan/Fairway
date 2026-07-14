@@ -293,6 +293,34 @@ describe('EyeMiniMonitor — reconnect + failure classification', () => {
     expect(monitor.getState()).toBe('connected');
   });
 
+  it('re-opens the event channel alone when it drops, staying connected', async () => {
+    jest.useFakeTimers();
+    const { tcp, monitor } = build();
+    const shots: MeasuredShot[] = [];
+    monitor.on('shot', (s) => shots.push(s));
+    await monitor.connect('192.168.1.10');
+    const eventCountBefore = tcp.connections.filter(
+      (c) => c.port === EVENT_PORT,
+    ).length;
+
+    // event channel drops while control stays up
+    tcp.byPort(EVENT_PORT).dropped();
+    expect(monitor.getState()).toBe('connected'); // control still fine
+
+    jest.advanceTimersByTime(1000);
+    await flush();
+    const eventCountAfter = tcp.connections.filter(
+      (c) => c.port === EVENT_PORT,
+    ).length;
+    expect(eventCountAfter).toBeGreaterThan(eventCountBefore);
+
+    // shots flow again on the fresh event channel
+    tcp
+      .byPort(EVENT_PORT)
+      .feed(192, 1, { shotdataEX1: fixture.raw_shotdataEX1 });
+    expect(shots).toHaveLength(1);
+  });
+
   it('does NOT reconnect after an intentional disconnect', async () => {
     jest.useFakeTimers();
     const { tcp, monitor } = build();
