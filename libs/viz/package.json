@@ -9,5 +9,10 @@
   },
   "dependencies": {
     "@golf/types": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*",
+    "react-native-svg": "*"
   }
 }
