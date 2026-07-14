@@ -7,25 +7,28 @@ import { ScreenPoint } from './viewport';
  * unit-tested in Node; SimTracerView just draws the output.
  *
  * World frame (FLIGHT_MODEL.md §1): x downrange (m), y up, z lateral (+right).
- * Pinhole camera behind the tee at eye height:
+ * Pinhole camera behind the tee at eye height, with SEPARATE vertical and
+ * lateral pixel scales (an anamorphic camera):
  *
  *   scale(x) = F / (F + x)                     (F = focal distance, m)
- *   sx = cx + z · k · scale(x)
- *   sy = horizonY + (EYE_M − y) · k · scale(x)
+ *   sx = cx + z · kx · scale(x)
+ *   sy = horizonY + (EYE_M − y) · ky · scale(x)
  *
- * As x → ∞ everything converges to (cx, horizonY). The ground shadow is the
- * same projection with y = 0 — it meets the tracer exactly at launch and
- * landing and separates most at the apex, which is what sells the depth.
+ * ky is solved so eye height spans horizon→bottom (the ground fills the
+ * lower view). Reusing ky laterally on a portrait phone would put ±34 m of
+ * range ~10× off-screen, so kx is solved independently: the fairway width
+ * (±FAIRWAY_HALF_M) fits the viewport at the LATERAL_REF_M plane. As x → ∞
+ * everything still converges to (cx, horizonY); the ground shadow is the same
+ * projection with y = 0.
  */
 export const EYE_M = 2.2;
 const FOCAL_M = 26;
 /** horizon sits this fraction of the way down the viewport */
 const HORIZON_FRACTION = 0.34;
-/**
- * Lateral gain < 1 tames the fish-eye effect of a wide fairway on a narrow
- * phone screen while keeping left/right curve direction obvious.
- */
-const PERSPECTIVE_LATERAL_GAIN = 0.85;
+/** half the visible range width (m) — stripes/boards live inside this */
+const FAIRWAY_HALF_M = 34;
+/** downrange plane (m) where the full fairway width exactly fits the screen */
+const LATERAL_REF_M = 55;
 
 export interface BehindProjection {
   /** SVG path ("M x y L x y …") of the ball flight */
@@ -39,8 +42,14 @@ export interface BehindProjection {
   groundNearY: number;
   /** perspective ground lines, near → far */
   distanceLines: { y: number; distanceM: number; halfWidth: number }[];
-  /** px per meter at the tee plane (for sizing markers) */
+  /** vertical px per meter at the tee plane */
   nearScale: number;
+  /** lateral px per meter at the tee plane (anamorphic — see module docs) */
+  lateralScale: number;
+  /** project any ground-plane point (scene furniture: boards, stripes) */
+  groundPoint(xM: number, zM: number): ScreenPoint;
+  /** perspective shrink factor at downrange xM (1 at the tee → 0 at horizon) */
+  scaleAt(xM: number): number;
 }
 
 export interface BehindSize {
@@ -66,14 +75,16 @@ export function projectBehind(
   const cx = size.width / 2;
   const horizonY = size.height * HORIZON_FRACTION;
 
-  // Solve k so the ground at the tee (x=0, y=0) hits the bottom of the view:
-  //   bottom = horizonY + EYE_M · k · scale(0)  with scale(0) = 1
+  // Solve ky so the ground at the tee (x=0, y=0) hits the bottom of the view:
+  //   bottom = horizonY + EYE_M · ky · scale(0)  with scale(0) = 1
   const groundNearY = size.height * 0.98;
   const k = (groundNearY - horizonY) / EYE_M;
 
   const scale = (x: number): number => FOCAL_M / (FOCAL_M + Math.max(x, 0));
+  // Solve kx so ±FAIRWAY_HALF_M fills the width at the LATERAL_REF_M plane
+  const kx = (0.94 * cx) / (FAIRWAY_HALF_M * scale(LATERAL_REF_M));
   const project = (x: number, y: number, z: number): ScreenPoint => ({
-    x: cx + z * k * scale(x) * PERSPECTIVE_LATERAL_GAIN,
+    x: cx + z * kx * scale(x),
     y: horizonY + (EYE_M - y) * k * scale(x),
   });
 
@@ -91,7 +102,7 @@ export function projectBehind(
     distanceLines.push({
       y: project(d, 0, 0).y,
       distanceM: d,
-      halfWidth: 30 * k * scale(d), // fixed 60 m-wide fairway band
+      halfWidth: 30 * kx * scale(d), // fixed 60 m-wide fairway band
     });
   }
 
@@ -104,6 +115,9 @@ export function projectBehind(
     groundNearY,
     distanceLines,
     nearScale: k,
+    lateralScale: kx,
+    groundPoint: (xM, zM) => project(xM, 0, zM),
+    scaleAt: scale,
   };
 }
 

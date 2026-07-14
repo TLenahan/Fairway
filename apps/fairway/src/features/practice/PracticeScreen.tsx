@@ -1,4 +1,5 @@
 import { Button, tw } from '@golf/ui';
+import { useKeepAwake } from 'expo-keep-awake';
 import { Link } from 'expo-router';
 import { Text, View } from 'react-native';
 
@@ -14,6 +15,10 @@ import { useFairwayStore, useServices, useSettings } from '@/services/context';
  * layout — built to be glanced at between swings, not scrolled.
  */
 export default function PracticeScreen() {
+  // practice = display stays on; the LAN connection survives because the
+  // screen never times out (true screen-off streaming needs a foreground
+  // service — future work)
+  useKeepAwake();
   const { data, store } = useServices();
   const connection = useFairwayStore((s) => s.connection);
   const ballReady = useFairwayStore((s) => s.ballReady);

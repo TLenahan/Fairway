@@ -53,47 +53,51 @@ export function ShotTracer({ sessionShots }: ShotTracerProps) {
         })
       }
     >
-      {size.width > 0 && latest?.flight ? (
+      {size.width > 0 ? (
         <>
           <SimTracerView
-            result={latest.flight}
+            result={latest?.flight ?? null}
             ghosts={ghosts}
             width={size.width}
             height={size.height}
-            animateKey={latest.shotGuid}
+            animateKey={latest?.shotGuid}
           />
-          {/* top-down inset, bottom-right, sim style */}
-          <View
-            style={[
-              tw`absolute bottom-1 right-1 rounded-xl border border-green-100 bg-white/90`,
-              { width: size.width * 0.3, height: size.height * 0.52 },
-            ]}
-          >
-            <TopDownView
-              result={latest.flight}
-              launchDirectionDeg={latest.measured.ball.launchDirectionDeg}
-              width={size.width * 0.3}
-              height={size.height * 0.52}
-            />
-          </View>
-          <View style={tw`absolute left-2 top-1 flex-row items-center gap-2`}>
-            <Text style={tw`text-base font-semibold text-green-700`}>
-              {shape}
+          {latest?.flight && (
+            <>
+              <View
+                style={[
+                  tw`absolute bottom-1 right-1 rounded-xl border border-green-100 bg-white/90`,
+                  { width: size.width * 0.3, height: size.height * 0.52 },
+                ]}
+              >
+                <TopDownView
+                  result={latest.flight}
+                  launchDirectionDeg={latest.measured.ball.launchDirectionDeg}
+                  width={size.width * 0.3}
+                  height={size.height * 0.52}
+                />
+              </View>
+              <View
+                style={tw`absolute left-2 top-1 flex-row items-center gap-2`}
+              >
+                <Text style={tw`text-base font-semibold text-green-700`}>
+                  {shape}
+                </Text>
+                <Text style={tw`text-xs text-computed`}>
+                  {ghosts.length > 0 ? `${ghosts.length} ghosts · ` : ''}est.
+                </Text>
+              </View>
+            </>
+          )}
+          {!latest?.flight && (
+            <Text
+              style={tw`absolute inset-x-0 top-2 text-center text-xs text-white/90`}
+            >
+              Hit a ball — the tracer draws here
             </Text>
-            <Text style={tw`text-xs text-computed`}>
-              {ghosts.length > 0 ? `${ghosts.length} ghosts · ` : ''}est.
-            </Text>
-          </View>
+          )}
         </>
-      ) : (
-        <View style={tw`flex-1 items-center justify-center`}>
-          <Text style={tw`text-center text-silver`}>
-            {size.width > 0
-              ? 'Hit a ball — the tracer draws here (putts don’t fly).'
-              : ''}
-          </Text>
-        </View>
-      )}
+      ) : null}
     </View>
   );
 }

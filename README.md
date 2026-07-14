@@ -39,6 +39,11 @@ yarn install                     # Node >= 22
 yarn nx run-many -t typecheck lint test   # all projects
 yarn nx test flight-model                 # one lib
 yarn nx prebuild fairway                  # regenerate ios/ (CNG)
+
+# Android release reinstall (from apps/fairway):
+npx expo run:android --variant release --no-bundler
+# CAUTION: Gradle only tracks JS under apps/fairway — after a libs/*-only
+# change, force the bundle: cd android && ./gradlew :app:createBundleReleaseJsAndAssets --rerun
 ```
 
 ## Device build (required for real hardware)
