@@ -12,14 +12,18 @@ import { ScreenPoint } from './viewport';
  *
  *   scale(x) = F / (F + x)                     (F = focal distance, m)
  *   sx = cx + z · kx · scale(x)
- *   sy = horizonY + (EYE_M − y) · ky · scale(x)
+ *   sy = horizonY + (EYE_M · ky − y · kh) · scale(x)
  *
  * ky is solved so eye height spans horizon→bottom (the ground fills the
  * lower view). Reusing ky laterally on a portrait phone would put ±34 m of
  * range ~10× off-screen, so kx is solved independently: the fairway width
- * (±FAIRWAY_HALF_M) fits the viewport at the LATERAL_REF_M plane. As x → ∞
- * everything still converges to (cx, horizonY); the ground shadow is the same
- * projection with y = 0.
+ * (±FAIRWAY_HALF_M) fits the viewport at the LATERAL_REF_M plane. Ball
+ * height is compressed the same way: ky is sized for 2.2 m of eye height and
+ * would send a 30 m iron apex several screens off the top, so kh is solved
+ * so the reference apex (APEX_REF_M high at APEX_REF_X_M downrange — about
+ * the highest, closest peak a real club produces) crests APEX_TOP_FRACTION
+ * of the viewport from the top edge. As x → ∞ everything still converges to
+ * (cx, horizonY); the ground shadow is the same projection with y = 0.
  */
 export const EYE_M = 2.2;
 const FOCAL_M = 26;
@@ -29,6 +33,17 @@ const HORIZON_FRACTION = 0.34;
 const FAIRWAY_HALF_M = 34;
 /** downrange plane (m) where the full fairway width exactly fits the screen */
 const LATERAL_REF_M = 55;
+/** reference apex that pins the height scale: this high (m)… */
+const APEX_REF_M = 50;
+/**
+ * …at this downrange plane (m). The reference is the highest-projecting
+ * flight in the real calibration suite (flight-model/calibration.spec.ts):
+ * a towering 9-iron, 49.5 m apex at 97 m downrange. Wedges apex lower and
+ * long irons peak farther out, so every club clears the top edge.
+ */
+const APEX_REF_X_M = 95;
+/** the reference apex crests this fraction of the viewport from the top */
+const APEX_TOP_FRACTION = 0.03;
 
 export interface BehindProjection {
   /** SVG path ("M x y L x y …") of the ball flight */
@@ -85,9 +100,15 @@ export function projectBehind(
   const scale = (x: number): number => FOCAL_M / (FOCAL_M + Math.max(x, 0));
   // Solve kx so ±FAIRWAY_HALF_M fills the width at the LATERAL_REF_M plane
   const kx = (0.94 * cx) / (FAIRWAY_HALF_M * scale(LATERAL_REF_M));
+  // Solve kh so the reference apex crests just under the top edge — ground
+  // geometry (y = 0) is untouched, only height above it is compressed
+  const apexScale = scale(APEX_REF_X_M);
+  const kh =
+    (horizonY + EYE_M * k * apexScale - size.height * APEX_TOP_FRACTION) /
+    (APEX_REF_M * apexScale);
   const project = (x: number, y: number, z: number): ScreenPoint => ({
     x: cx + z * kx * scale(x),
-    y: horizonY + (EYE_M - y) * k * scale(x),
+    y: horizonY + (EYE_M * k - y * kh) * scale(x),
   });
 
   const tracer = result.path.map((p) => project(p.x, p.y, p.z));
