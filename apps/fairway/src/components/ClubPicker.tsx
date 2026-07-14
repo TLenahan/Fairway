@@ -173,19 +173,60 @@ export function ClubPicker() {
     setOpen(true);
   };
 
+  /**
+   * (name + color) IS the group identity: a red 6i and a yellow 6i are
+   * separate groups. So we find the existing group with this exact
+   * name+color and activate it, or create a new one — we never recolor an
+   * existing group in place (that would merge two groups' shots).
+   */
+  const activateGroup = async (spec: {
+    name: string;
+    category: Category;
+    swingTag: Swing | null;
+    loftDeg: number | null;
+    notes: string | null;
+  }) => {
+    const focusVal = focus.trim() || null;
+    const existing = clubs.find(
+      (c) =>
+        !c.archived &&
+        c.name === spec.name &&
+        (c.tracerColor ?? DEFAULT_TRACER_COLOR) === color,
+    );
+    if (existing) {
+      if ((existing.focusNote ?? '') !== (focusVal ?? '')) {
+        await data.updateClub(existing.id, { focusNote: focusVal });
+      }
+      await selectClub(existing.id);
+    } else {
+      await createClub({
+        name: spec.name,
+        category: spec.category,
+        swingTag: spec.swingTag,
+        loftDeg: spec.loftDeg,
+        notes: spec.notes,
+        tracerColor: color,
+        focusNote: focusVal,
+        archived: false,
+      });
+    }
+    setOpen(false);
+    setAdding(false);
+  };
+
   const apply = async () => {
-    const club = clubs.find((c) => c.id === selectedId);
-    if (!club) return;
+    const base = clubs.find((c) => c.id === selectedId);
+    if (!base) return;
     setBusy(true);
     setError(null);
     try {
-      await data.updateClub(club.id, {
-        name: name.trim() || club.name,
-        tracerColor: color,
-        focusNote: focus.trim() || null,
+      await activateGroup({
+        name: name.trim() || base.name,
+        category: base.category,
+        swingTag: base.swingTag,
+        loftDeg: base.loftDeg,
+        notes: base.notes,
       });
-      await selectClub(club.id);
-      setOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -198,18 +239,13 @@ export function ClubPicker() {
     setBusy(true);
     setError(null);
     try {
-      await createClub({
+      await activateGroup({
         name: name.trim(),
         category: newCategory,
         swingTag: newCategory === 'putter' ? null : newSwing,
         loftDeg: null,
         notes: null,
-        tracerColor: color,
-        focusNote: focus.trim() || null,
-        archived: false,
       });
-      setOpen(false);
-      setAdding(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

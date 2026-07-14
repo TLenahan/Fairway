@@ -12,6 +12,9 @@ interface GappingViewProps {
   rowHeight?: number;
   color?: string;
   warnColor?: string;
+  /** per-club bar color (the club's tracer color) — distinguishes same-named
+   *  groups; falls back to `color`. A flagged row still wins with warnColor. */
+  colorForClub?: (clubId: string) => string | undefined;
 }
 
 const LABEL_WIDTH = 96;
@@ -28,6 +31,7 @@ export function GappingView({
   rowHeight = 26,
   color = '#1f5631',
   warnColor = '#b8433c',
+  colorForClub,
 }: GappingViewProps) {
   const rows = buildGappingRows(entries);
   const height = rows.length * rowHeight;
@@ -39,6 +43,9 @@ export function GappingView({
         {rows.map((row, index) => {
           const y = index * rowHeight;
           const flagged = row.overlap || row.oversizedGap;
+          const barColor = flagged
+            ? warnColor
+            : (colorForClub?.(row.clubId) ?? color);
           return (
             <G key={row.clubId}>
               <SvgText
@@ -56,7 +63,7 @@ export function GappingView({
                 width={Math.max(row.barFraction * barMax, 2)}
                 height={rowHeight - 10}
                 rx={3}
-                fill={flagged ? warnColor : color}
+                fill={barColor}
                 fillOpacity={flagged ? 0.85 : 0.9}
               />
               <SvgText

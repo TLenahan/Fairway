@@ -1,9 +1,21 @@
 import { GappingView, GroupingView, TrajectoryView } from '@golf/viz';
-import { Club, Session, SessionSummary, ShotRecord } from '@golf/types';
-import { Button, Card, Pill, SectionTitle, StatTile, tw } from '@golf/ui';
+import {
+  Club,
+  DEFAULT_TRACER_COLOR,
+  Session,
+  SessionSummary,
+  ShotRecord,
+} from '@golf/types';
+import { Button, Card, SectionTitle, StatTile, tw } from '@golf/ui';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useFocusEffect } from 'expo-router';
 
 import {
@@ -91,6 +103,9 @@ export default function SessionReviewScreen() {
               entries={summary.gapping}
               width={vizWidth}
               unit={distanceUnit}
+              colorForClub={(clubId) =>
+                clubs.find((c) => c.id === clubId)?.tracerColor ?? undefined
+              }
             />
           </Card>
         </>
@@ -99,14 +114,37 @@ export default function SessionReviewScreen() {
       <SectionTitle title="Clubs" />
       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
         <View style={tw`flex-row gap-2 py-1`}>
-          {clubIdsInSession.map((clubId) => (
-            <Pill
-              key={clubId}
-              label={clubs.find((c) => c.id === clubId)?.name ?? clubId}
-              selected={clubId === focusId}
-              onPress={() => setFocusClubId(clubId)}
-            />
-          ))}
+          {clubIdsInSession.map((clubId) => {
+            // (name + color) is the group identity, so two same-named groups
+            // must be told apart by their swatch here
+            const club = clubs.find((c) => c.id === clubId);
+            const color = club?.tracerColor ?? DEFAULT_TRACER_COLOR;
+            const selected = clubId === focusId;
+            return (
+              <Pressable
+                key={clubId}
+                onPress={() => setFocusClubId(clubId)}
+                style={tw.style(
+                  'flex-row items-center gap-2 rounded-full border px-3 py-1.5',
+                  selected
+                    ? 'border-green-700 bg-green-700'
+                    : 'border-silver bg-white',
+                )}
+              >
+                <View
+                  style={[tw`h-3 w-3 rounded-full`, { backgroundColor: color }]}
+                />
+                <Text
+                  style={tw.style(
+                    'text-sm font-medium',
+                    selected ? 'text-ivory' : 'text-ink',
+                  )}
+                >
+                  {club?.name ?? clubId}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </ScrollView>
 
