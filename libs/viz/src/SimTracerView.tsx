@@ -9,17 +9,25 @@ import { polylineLength, projectBehind } from './lib/project-behind';
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
+/** a static arc drawn behind the animated latest shot, in its club's color */
+export interface TracerArc {
+  /** stable identity (shot id) */
+  key: string;
+  flight: FlightResult;
+  color: string;
+  /** faint history styling (same-club ghosts in last-shot mode) */
+  ghost?: boolean;
+}
+
 interface SimTracerViewProps {
-  /** null renders the empty range (idle state, no tracer) */
-  result: FlightResult | null;
-  /** earlier same-club shots, drawn as faint static arcs */
-  ghosts?: FlightResult[];
+  /** the animated, boldest arc; null renders the empty range (idle state) */
+  latest: { flight: FlightResult; color: string } | null;
+  /** earlier shots drawn as static arcs, each in its own club color */
+  arcs?: TracerArc[];
   width: number;
   height: number;
   /** re-triggers the draw-on animation when it changes (use the shotGuid) */
   animateKey?: string;
-  /** tracer arc color (per-club); defaults to VIEW red */
-  color?: string;
 }
 
 /**
@@ -34,7 +42,6 @@ const PHOTO_HORIZON_FRACTION = 0.46;
 /** BG4 backdrop native aspect (1920×1080). */
 const BACKDROP_ASPECT = 16 / 9;
 
-const DEFAULT_TRACER_CORE = '#ff4136'; // VIEW-style red arc
 const TRACER_GLOW = '#ffffff';
 const SHADOW = '#182f1b';
 
@@ -54,29 +61,35 @@ const IDLE_SCENE: FlightResult = {
 
 /**
  * Golf-sim tracer over a real range photograph: behind-the-ball perspective
- * (lib/project-behind, horizon matched to the photo), the arc drawing on over
- * ~1.2 s with a white glow under a red core so it reads on both sky and
- * grass, its shadow racing the turf, ghosts of earlier same-club shots.
+ * (lib/project-behind, horizon matched to the photo), the latest arc drawing
+ * on over ~1.2 s with a white glow under a colored core so it reads on both
+ * sky and grass, its shadow racing the turf, earlier arcs held static behind
+ * it — each in its own club's color.
  */
 export function SimTracerView({
-  result,
-  ghosts = [],
+  latest,
+  arcs = [],
   width,
   height,
   animateKey,
-  color = DEFAULT_TRACER_CORE,
 }: SimTracerViewProps) {
   const size = useMemo(
     () => ({ width, height, horizonFraction: PHOTO_HORIZON_FRACTION }),
     [width, height],
   );
   const projection = useMemo(
-    () => projectBehind(result ?? IDLE_SCENE, size),
-    [result, size],
+    () => projectBehind(latest?.flight ?? IDLE_SCENE, size),
+    [latest, size],
   );
-  const ghostPaths = useMemo(
-    () => ghosts.map((g) => projectBehind(g, size).tracerPath),
-    [ghosts, size],
+  const staticArcs = useMemo(
+    () =>
+      arcs.map((arc) => ({
+        key: arc.key,
+        color: arc.color,
+        ghost: arc.ghost ?? false,
+        path: projectBehind(arc.flight, size).tracerPath,
+      })),
+    [arcs, size],
   );
   const tracerLength = useMemo(
     () => polylineLength(projection.tracerPath),
@@ -130,60 +143,65 @@ export function SimTracerView({
           height,
         }}
       />
-      {result !== null && (
+      {(latest !== null || staticArcs.length > 0) && (
         <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
-          {ghostPaths.map((path, index) => (
+          {staticArcs.map((arc) => (
             <Path
-              key={index}
-              d={path}
+              key={arc.key}
+              d={arc.path}
               fill="none"
-              stroke={color}
-              strokeWidth={1.5}
-              opacity={0.3}
+              stroke={arc.color}
+              strokeWidth={arc.ghost ? 1.5 : 2}
+              strokeLinecap="round"
+              opacity={arc.ghost ? 0.3 : 0.8}
             />
           ))}
-          <AnimatedPath
-            d={projection.shadowPath}
-            fill="none"
-            stroke={SHADOW}
-            strokeWidth={2.5}
-            opacity={0.3}
-            strokeDasharray={`${shadowLength} ${shadowLength}`}
-            strokeDashoffset={shadowOffset}
-          />
-          <AnimatedPath
-            d={projection.tracerPath}
-            fill="none"
-            stroke={TRACER_GLOW}
-            strokeWidth={5}
-            strokeLinecap="round"
-            opacity={0.55}
-            strokeDasharray={`${tracerLength} ${tracerLength}`}
-            strokeDashoffset={tracerOffset}
-          />
-          <AnimatedPath
-            d={projection.tracerPath}
-            fill="none"
-            stroke={color}
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            strokeDasharray={`${tracerLength} ${tracerLength}`}
-            strokeDashoffset={tracerOffset}
-          />
-          <AnimatedCircle
-            cx={projection.landing.x}
-            cy={projection.landing.y}
-            r={6}
-            fill={TRACER_GLOW}
-            opacity={markerOpacity}
-          />
-          <AnimatedCircle
-            cx={projection.landing.x}
-            cy={projection.landing.y}
-            r={3.5}
-            fill={color}
-            opacity={markerOpacity}
-          />
+          {latest !== null && (
+            <>
+              <AnimatedPath
+                d={projection.shadowPath}
+                fill="none"
+                stroke={SHADOW}
+                strokeWidth={2.5}
+                opacity={0.3}
+                strokeDasharray={`${shadowLength} ${shadowLength}`}
+                strokeDashoffset={shadowOffset}
+              />
+              <AnimatedPath
+                d={projection.tracerPath}
+                fill="none"
+                stroke={TRACER_GLOW}
+                strokeWidth={5}
+                strokeLinecap="round"
+                opacity={0.55}
+                strokeDasharray={`${tracerLength} ${tracerLength}`}
+                strokeDashoffset={tracerOffset}
+              />
+              <AnimatedPath
+                d={projection.tracerPath}
+                fill="none"
+                stroke={latest.color}
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeDasharray={`${tracerLength} ${tracerLength}`}
+                strokeDashoffset={tracerOffset}
+              />
+              <AnimatedCircle
+                cx={projection.landing.x}
+                cy={projection.landing.y}
+                r={6}
+                fill={TRACER_GLOW}
+                opacity={markerOpacity}
+              />
+              <AnimatedCircle
+                cx={projection.landing.x}
+                cy={projection.landing.y}
+                r={3.5}
+                fill={latest.color}
+                opacity={markerOpacity}
+              />
+            </>
+          )}
         </Svg>
       )}
     </View>
