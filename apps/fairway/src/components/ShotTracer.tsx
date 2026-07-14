@@ -1,6 +1,6 @@
 import { ShotRecord } from '@golf/types';
 import { tw } from '@golf/ui';
-import { classifyShotShape, TopDownView, TrajectoryView } from '@golf/viz';
+import { classifyShotShape, SimTracerView, TopDownView } from '@golf/viz';
 import { useState } from 'react';
 import { Text, View } from 'react-native';
 
@@ -55,10 +55,12 @@ export function ShotTracer({ sessionShots }: ShotTracerProps) {
     >
       {size.width > 0 && latest?.flight ? (
         <>
-          <TrajectoryView
-            results={[...ghosts, latest.flight]}
+          <SimTracerView
+            result={latest.flight}
+            ghosts={ghosts}
             width={size.width}
             height={size.height}
+            animateKey={latest.shotGuid}
           />
           {/* top-down inset, bottom-right, sim style */}
           <View

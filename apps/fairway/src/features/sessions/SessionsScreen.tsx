@@ -1,8 +1,8 @@
 import { Session } from '@golf/types';
 import { Card, tw } from '@golf/ui';
-import { Link, useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Text, View } from 'react-native';
+import { FlatList, Pressable, Text, View } from 'react-native';
 
 import { useServices } from '@/services/context';
 
@@ -15,6 +15,7 @@ const formatDate = (epochMs: number) =>
   });
 
 export default function SessionsScreen() {
+  const router = useRouter();
   const { data } = useServices();
   const [sessions, setSessions] = useState<Session[]>([]);
 
@@ -35,7 +36,9 @@ export default function SessionsScreen() {
           </Text>
         }
         renderItem={({ item }) => (
-          <Link href={`/sessions/${item.id}`} asChild>
+          // Card is a plain View — the Pressable must be the touch target
+          // (Link asChild on a non-pressable silently drops the navigation)
+          <Pressable onPress={() => router.push(`/sessions/${item.id}`)}>
             <Card style={tw`mb-2`}>
               <View style={tw`flex-row items-center justify-between`}>
                 <View>
@@ -53,7 +56,7 @@ export default function SessionsScreen() {
                 <Text style={tw`text-green-700`}>›</Text>
               </View>
             </Card>
-          </Link>
+          </Pressable>
         )}
       />
     </View>
