@@ -1,0 +1,54 @@
+{
+  "_comment": "Real shot captured from an EYE MINI (firmware sw 2.7.8). Use as the canonical unit-test vector for the ShotDecoder. The `expected` block is what decodeShot MUST produce. Note face/loft/lie/faceImpact are null because their assurance is 0 — a decoder that returns 0.0 for these is WRONG.",
+
+  "raw_shotdataEX1": {
+    "shotguid": { "Data1": 1416080389, "Data2": 2629, "Data3": 29505, "Data4": [141, 221, 212, 38, 68, 171, 190, 183] },
+    "category": 12,
+    "rightlefthanded": 0,
+    "xposx1000": 167, "yposx1000": -202, "zposx1000": 59,
+    "ballspeedx1000": 26092,
+    "inclineX1000": 25630,
+    "azimuthX1000": -2011,
+    "spincalc_method": 2, "assurance_spin": 97,
+    "backspinX1000": 6918153, "sidespinX1000": 1396358, "rollspinX1000": 1028395,
+    "clubcalc_method": 2,
+    "assurance_clubspeed": 95, "assurance_clubpath": 95, "assurance_faceangle": 0,
+    "assurance_attackangle": 95, "assurance_loftangle": 0, "assurance_lieangle": 0,
+    "assurance_faceimpactLateral": 0, "assurance_faceimpactVertical": 0,
+    "clubspeedX1000": 25357, "clubpathX1000": -1867, "faceangleX1000": 0, "attackangleX1000": -6200,
+    "loftangleX1000": 0, "lieangleX1000": 0, "faceimpactLateralX1000": 0, "faceimpactVerticalX1000": 0,
+    "impactTimestamp": 1783975921445500
+  },
+
+  "expected_decode_SI": {
+    "shotGuid": "1416080389-2629-29505",
+    "handedness": "right",
+    "ball": {
+      "speedMs": 26.092,
+      "launchAngleDeg": 25.63,
+      "launchDirectionDeg": -2.011,
+      "backspinRpm": 6918.153,
+      "sidespinRpm": 1396.358,
+      "rollspinRpm": 1028.395,
+      "spinAssurance": 97
+    },
+    "club": {
+      "speedMs": 25.357,
+      "pathDeg": -1.867,
+      "faceAngleDeg": null,
+      "attackAngleDeg": -6.2,
+      "loftDeg": null,
+      "lieDeg": null,
+      "faceImpactHMm": null,
+      "faceImpactVMm": null
+    },
+    "smashFactor": 1.028986
+  },
+
+  "expected_decode_display_mph": {
+    "ballSpeedMph": 58.37,
+    "clubSpeedMph": 56.72,
+    "smashFactor": 1.03,
+    "note": "conversion factor m/s -> mph = 2.2369362920544; smash uses raw SI, not rounded display values"
+  }
+}
