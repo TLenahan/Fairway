@@ -127,6 +127,23 @@ describe('projectBehind — sim camera', () => {
     );
   });
 
+  it('keeps a towering apex inside the viewport', () => {
+    // high, close peak (lob-wedge-like): 32 m apex at 50 m downrange
+    const path = [];
+    for (let i = 0; i <= 10; i += 1) {
+      const x = i * 10;
+      path.push({ t: i, x, y: 32 * (1 - ((x - 50) / 50) ** 2), z: 0 });
+    }
+    const projection = projectBehind(
+      flight({ path, carryM: 100, totalM: 104, apexM: 32, landing: { x: 100, z: 0 } }),
+      SIZE,
+    );
+    for (const point of pathPoints(projection.tracerPath)) {
+      expect(point.y).toBeGreaterThanOrEqual(0);
+    }
+    expect(projection.apex.y).toBeGreaterThanOrEqual(0);
+  });
+
   it('a rightward finish lands right of center; left lands left', () => {
     const right = projectBehind(
       flight({
