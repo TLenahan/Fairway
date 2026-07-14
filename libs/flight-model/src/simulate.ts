@@ -46,12 +46,12 @@ export const simulate = (
   const landingSpinRpm =
     Math.hypot(spinAtLanding.x, spinAtLanding.y, spinAtLanding.z) /
     RPM_TO_RAD_PER_S;
-  const rollout = rolloutM(horizontalSpeed, descentDeg, landingSpinRpm);
 
   // carry = horizontal distance the ball actually flew (along its own line —
   // what golfers and launch monitors mean by carry), NOT the target-line
   // projection. offlineM/landing keep the target-line frame for the views.
   const carry = Math.hypot(landing.x, landing.z);
+  const rollout = rolloutM(horizontalSpeed, descentDeg, landingSpinRpm, carry);
 
   return {
     path: integration.path,
