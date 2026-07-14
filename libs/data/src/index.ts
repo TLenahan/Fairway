@@ -4,3 +4,6 @@
 export * from './database';
 export * from './migrations';
 export * from './seed';
+export * from './seed-runner';
+export * from './data-store';
+export * from './rows';

@@ -94,7 +94,11 @@ describe('migration harness', () => {
          )`,
       );
     await insert('a');
-    await expect(insert('b')).rejects.toThrow();
+    // structural match — the driver's error class can be from another realm
+    // (jest vm contexts), which breaks instanceof-based matchers like toThrow
+    await expect(insert('b')).rejects.toMatchObject({
+      message: expect.stringMatching(/unique/i),
+    });
     db.close();
   });
 });
