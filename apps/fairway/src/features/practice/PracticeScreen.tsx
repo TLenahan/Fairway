@@ -1,3 +1,4 @@
+import { DEFAULT_TRACER_COLOR } from '@golf/types';
 import { tw } from '@golf/ui';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Menu } from 'lucide-react-native';
@@ -76,6 +77,7 @@ export default function PracticeScreen() {
           sessionShots={sessionShots}
           overlayTopOffset={insets.top + 64}
           overlayBottomOffset={TILE_STRIP_HEIGHT + tilesBottom}
+          tracerColor={activeClub?.tracerColor ?? DEFAULT_TRACER_COLOR}
         />
       </View>
 

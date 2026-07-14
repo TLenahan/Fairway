@@ -90,6 +90,7 @@ describe('createDataStore', () => {
       swingTag: 'half',
       loftDeg: 60,
       notes: null,
+      tracerColor: null,
       archived: false,
     });
     expect(club.sensorMode).toBe('iron');
@@ -126,6 +127,7 @@ describe('createDataStore', () => {
       swingTag: 'full',
       loftDeg: 34,
       notes: null,
+      tracerColor: null,
       archived: false,
     });
     const session = await store.createSession({
@@ -163,6 +165,7 @@ describe('createDataStore', () => {
       swingTag: 'full',
       loftDeg: 34,
       notes: null,
+      tracerColor: null,
       archived: false,
     });
     const session = await store.createSession({
@@ -185,6 +188,7 @@ describe('createDataStore', () => {
       swingTag: 'full',
       loftDeg: 34,
       notes: null,
+      tracerColor: null,
       archived: false,
     });
     const session = await store.createSession({
@@ -212,6 +216,7 @@ describe('createDataStore', () => {
       swingTag: 'full',
       loftDeg: 10.5,
       notes: null,
+      tracerColor: null,
       archived: false,
     });
     const s1 = await store.createSession({

@@ -11,6 +11,8 @@ interface ShotTracerProps {
   overlayBottomOffset?: number;
   /** px to drop top-anchored overlays (floating buttons / notch) */
   overlayTopOffset?: number;
+  /** active club tracer color */
+  tracerColor?: string;
 }
 
 const MAX_GHOSTS = 5;
@@ -31,6 +33,7 @@ export function ShotTracer({
   sessionShots,
   overlayBottomOffset = 0,
   overlayTopOffset = 0,
+  tracerColor,
 }: ShotTracerProps) {
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -75,6 +78,7 @@ export function ShotTracer({
             width={size.width}
             height={size.height}
             animateKey={latest?.shotGuid}
+            color={tracerColor}
           />
           {latest?.flight && (
             <>

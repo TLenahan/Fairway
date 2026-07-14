@@ -18,6 +18,8 @@ interface SimTracerViewProps {
   height: number;
   /** re-triggers the draw-on animation when it changes (use the shotGuid) */
   animateKey?: string;
+  /** tracer arc color (per-club); defaults to VIEW red */
+  color?: string;
 }
 
 /**
@@ -31,7 +33,7 @@ interface SimTracerViewProps {
  */
 const PHOTO_HORIZON_FRACTION = 0.85;
 
-const TRACER_CORE = '#ff4136'; // VIEW-style red arc
+const DEFAULT_TRACER_CORE = '#ff4136'; // VIEW-style red arc
 const TRACER_GLOW = '#ffffff';
 const SHADOW = '#182f1b';
 
@@ -61,6 +63,7 @@ export function SimTracerView({
   width,
   height,
   animateKey,
+  color = DEFAULT_TRACER_CORE,
 }: SimTracerViewProps) {
   const size = useMemo(
     () => ({ width, height, horizonFraction: PHOTO_HORIZON_FRACTION }),
@@ -121,7 +124,7 @@ export function SimTracerView({
               key={index}
               d={path}
               fill="none"
-              stroke={TRACER_CORE}
+              stroke={color}
               strokeWidth={1.5}
               opacity={0.3}
             />
@@ -148,7 +151,7 @@ export function SimTracerView({
           <AnimatedPath
             d={projection.tracerPath}
             fill="none"
-            stroke={TRACER_CORE}
+            stroke={color}
             strokeWidth={2.5}
             strokeLinecap="round"
             strokeDasharray={`${tracerLength} ${tracerLength}`}
@@ -165,7 +168,7 @@ export function SimTracerView({
             cx={projection.landing.x}
             cy={projection.landing.y}
             r={3.5}
-            fill={TRACER_CORE}
+            fill={color}
             opacity={markerOpacity}
           />
         </Svg>

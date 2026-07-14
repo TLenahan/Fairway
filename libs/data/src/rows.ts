@@ -24,6 +24,7 @@ export interface ClubRow {
   swing_tag: string | null;
   loft_deg: number | null;
   notes: string | null;
+  tracer_color: string | null;
   archived: number;
   created_at: number;
 }
@@ -37,6 +38,7 @@ export function mapClubRow(row: ClubRow): Club {
     swingTag: row.swing_tag,
     loftDeg: row.loft_deg,
     notes: row.notes,
+    tracerColor: row.tracer_color ?? null,
     archived: row.archived === 1,
     createdAt: row.created_at,
   });

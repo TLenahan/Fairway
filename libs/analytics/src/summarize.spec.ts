@@ -13,6 +13,7 @@ const club = (id: string, name: string): Club => ({
   swingTag: 'full',
   loftDeg: 34,
   notes: null,
+  tracerColor: null,
   archived: false,
   createdAt: 1,
 });

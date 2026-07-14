@@ -110,6 +110,13 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    async up(db) {
+      // per-club flight-tracer color (hex); NULL = app default red
+      await db.execAsync('ALTER TABLE clubs ADD COLUMN tracer_color TEXT');
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {

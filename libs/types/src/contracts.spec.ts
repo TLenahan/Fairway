@@ -78,6 +78,7 @@ describe('@golf/types contracts', () => {
       swingTag: 'half',
       loftDeg: 60,
       notes: null,
+      tracerColor: null,
       archived: false,
       createdAt: 1,
     });

@@ -17,6 +17,7 @@ const club = (
   swingTag: 'full',
   loftDeg,
   notes: null,
+  tracerColor: null,
   archived: false,
 });
 

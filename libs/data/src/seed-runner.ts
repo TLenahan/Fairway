@@ -13,6 +13,7 @@ export async function seedDefaultClubs(store: DataStore): Promise<void> {
       swingTag: club.swingTag,
       loftDeg: club.loftDeg,
       notes: club.notes,
+      tracerColor: club.tracerColor,
       archived: club.archived,
     });
   }
