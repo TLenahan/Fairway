@@ -1,6 +1,7 @@
 # Fairway
 
-Native iOS/iPad companion app for the **Uneekor EYE MINI** launch monitor:
+Companion app for the **Uneekor EYE MINI** launch monitor (Android phone is
+the current primary device; iOS/iPad per the original spec still supported):
 direct LAN connection (no PC, no Uneekor software), real-time shot capture,
 sessions + clubs, an altitude-aware ball-flight model, local statistics, and
 Claude-powered session analysis with your own Anthropic API key.
