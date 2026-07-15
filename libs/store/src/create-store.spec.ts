@@ -9,6 +9,9 @@ import {
   MonitorServiceEvents,
   Session,
   ShotRecord,
+  WristService,
+  WristServiceEvents,
+  WristShot,
 } from '@golf/types';
 
 import { createFairwayStore } from './create-store';
@@ -175,6 +178,10 @@ class FakeData implements DataStore {
     return record;
   }
   async attachFlight(): Promise<void> {}
+  async attachWrist(shotId: string, wrist: WristShot): Promise<void> {
+    const shot = this.shots.find((s) => s.id === shotId);
+    if (shot) shot.wrist = wrist;
+  }
   async setShotDiscarded(): Promise<void> {}
   async listShots(): Promise<ShotRecord[]> {
     return this.shots;
@@ -188,18 +195,66 @@ class FakeData implements DataStore {
   }
 }
 
+type WristHandler = WristServiceEvents[keyof WristServiceEvents];
+
+class FakeWrist implements WristService {
+  private handlers = new Map<string, WristHandler[]>();
+  startScan(): void {}
+  stopScan(): void {}
+  async connect(): Promise<void> {}
+  disconnect(): void {}
+  getState(): 'disconnected' {
+    return 'disconnected';
+  }
+  on<K extends keyof WristServiceEvents>(
+    e: K,
+    h: WristServiceEvents[K],
+  ): void {
+    this.handlers.set(e, [...(this.handlers.get(e) ?? []), h]);
+  }
+  off(): void {}
+  emit<K extends keyof WristServiceEvents>(
+    e: K,
+    ...args: Parameters<WristServiceEvents[K]>
+  ): void {
+    for (const h of this.handlers.get(e) ?? []) {
+      (h as (...a: Parameters<WristServiceEvents[K]>) => void)(...args);
+    }
+  }
+}
+
+const swingAt = (tImpactMs: number): WristShot => {
+  const kf = {
+    tMs: tImpactMs,
+    angularSpeedDegS: 100,
+    angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
+    rotVecDeg: [1, 2, 3] as [number, number, number],
+  };
+  return {
+    tImpactMs,
+    durationMs: 700,
+    peakAngularSpeedDegS: 480,
+    calibrated: false,
+    address: kf,
+    top: kf,
+    impact: kf,
+    shock: { tMs: tImpactMs, offsetFromImpactMs: 0, peakAbsLsb: 4000 },
+  };
+};
+
 const fakeFlightModel: FlightModel = {
   simulate: () => flightFixture,
 };
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function build() {
+function build(opts: { wrist?: FakeWrist } = {}) {
   const monitor = new FakeMonitor();
   const data = new FakeData();
   const errors: Error[] = [];
   const store = createFairwayStore({
     monitor,
+    wrist: opts.wrist,
     data,
     flightModel: fakeFlightModel,
     getDefaultEnvironment: () => ({
@@ -210,6 +265,19 @@ function build() {
     onError: (e) => errors.push(e),
   });
   return { monitor, data, store, errors };
+}
+
+async function withActiveIron(store: ReturnType<typeof build>['store']) {
+  await store.getState().createClub({
+    name: '7 Iron',
+    category: 'iron',
+    swingTag: 'full',
+    loftDeg: 34,
+    notes: null,
+    tracerColor: null,
+    focusNote: null,
+    archived: false,
+  });
 }
 
 describe('createFairwayStore', () => {
@@ -333,5 +401,51 @@ describe('createFairwayStore', () => {
     });
     expect(store.getState().activeClub?.id).toBe(club.id);
     expect(monitor.setClubCalls).toEqual(['iron']);
+  });
+
+  it('joins a wrist swing arriving just after its shot', async () => {
+    const wrist = new FakeWrist();
+    const { monitor, data, store, errors } = build({ wrist });
+    await withActiveIron(store);
+
+    monitor.emit('shot', measuredFixture('g-1'));
+    await flush();
+    wrist.emit('swing', swingAt(Date.now()));
+    await flush();
+
+    expect(errors).toHaveLength(0);
+    expect(store.getState().sessionShots[0].wrist?.peakAngularSpeedDegS).toBe(
+      480,
+    );
+    expect(data.shots[0].wrist).toBeDefined();
+  });
+
+  it('joins a wrist swing arriving just before its shot', async () => {
+    const wrist = new FakeWrist();
+    const { monitor, store } = build({ wrist });
+    await withActiveIron(store);
+
+    wrist.emit('swing', swingAt(Date.now()));
+    await flush();
+    monitor.emit('shot', measuredFixture('g-2'));
+    await flush();
+
+    expect(store.getState().sessionShots[0].wrist).toBeDefined();
+  });
+
+  it('leaves a shot unjoined when no swing is near in time', async () => {
+    const wrist = new FakeWrist();
+    const { monitor, store, errors } = build({ wrist });
+    await withActiveIron(store);
+
+    // practice swing far in the past: no shot, no crash, ages out
+    wrist.emit('swing', swingAt(Date.now() - 100_000));
+    await flush();
+    expect(store.getState().sessionShots).toHaveLength(0);
+
+    monitor.emit('shot', measuredFixture('g-3'));
+    await flush();
+    expect(errors).toHaveLength(0);
+    expect(store.getState().sessionShots[0].wrist).toBeUndefined();
   });
 });

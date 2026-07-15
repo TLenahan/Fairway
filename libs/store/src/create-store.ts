@@ -9,8 +9,17 @@ import {
   LiveSlice,
   MeasuredShot,
   MonitorService,
+  ShotRecord,
+  WristService,
+  WristShot,
 } from '@golf/types';
 import { createStore } from 'zustand/vanilla';
+
+/** Wrist swings and launch-monitor shots ride independent, unsynced device
+    clocks, so they can only be joined on host arrival time. Nearest-neighbour
+    within this window; buffered events older than PRUNE_MS are dropped. */
+const JOIN_WINDOW_MS = 1500;
+const PRUNE_MS = 5000;
 
 export type FairwayState = ConnectionSlice & LiveSlice & ActiveSessionSlice;
 
@@ -18,6 +27,8 @@ export interface FairwayStoreDeps {
   monitor: MonitorService;
   data: DataStore;
   flightModel: FlightModel;
+  /** optional wrist sensor; when present, its swings are joined onto shots */
+  wrist?: WristService;
   /** current environment for implicit quick sessions — read at shot time */
   getDefaultEnvironment(): Environment;
   /** non-fatal pipeline errors (e.g. persist failure) — surface, don't swallow */
@@ -41,7 +52,8 @@ const launchConditionsFrom = (m: MeasuredShot): LaunchConditions => ({
  * results, and exposes the three CONTRACTS slices to the UI.
  */
 export function createFairwayStore(deps: FairwayStoreDeps) {
-  const { monitor, data, flightModel, getDefaultEnvironment, onError } = deps;
+  const { monitor, wrist, data, flightModel, getDefaultEnvironment, onError } =
+    deps;
 
   const store = createStore<FairwayState>()((set, get) => ({
     /* ── ConnectionSlice ── */
@@ -129,6 +141,41 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     return fallback;
   }
 
+  // Wrist↔shot correlation buffers (only used when a wrist service is wired).
+  const pendingSwings: { swing: WristShot; at: number }[] = [];
+  const pendingShots: { record: ShotRecord; at: number }[] = [];
+
+  function nearestWithin(times: { at: number }[], target: number): number {
+    let best = -1;
+    let bestDelta = JOIN_WINDOW_MS;
+    times.forEach((entry, i) => {
+      const delta = Math.abs(entry.at - target);
+      if (delta <= bestDelta) {
+        bestDelta = delta;
+        best = i;
+      }
+    });
+    return best;
+  }
+
+  function prune(now: number): void {
+    while (pendingSwings.length && now - pendingSwings[0].at > PRUNE_MS) {
+      pendingSwings.shift();
+    }
+    while (pendingShots.length && now - pendingShots[0].at > PRUNE_MS) {
+      pendingShots.shift();
+    }
+  }
+
+  async function attachWrist(record: ShotRecord, swing: WristShot): Promise<void> {
+    await data.attachWrist(record.id, swing);
+    set({
+      sessionShots: get().sessionShots.map((s) =>
+        s.id === record.id ? { ...s, wrist: swing } : s,
+      ),
+    });
+  }
+
   async function handleShot(measured: MeasuredShot): Promise<void> {
     // Monitor already dedups; this guards the store against replays across
     // reconnects within one session.
@@ -150,6 +197,30 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
       lastShot: measured,
       sessionShots: [record, ...get().sessionShots],
     });
+
+    if (!wrist) return;
+    const arrivalAt = Date.now();
+    prune(arrivalAt);
+    const idx = nearestWithin(pendingSwings, arrivalAt);
+    if (idx >= 0) {
+      const [{ swing }] = pendingSwings.splice(idx, 1);
+      await attachWrist(record, swing);
+    } else {
+      pendingShots.push({ record, at: arrivalAt });
+    }
+  }
+
+  async function handleSwing(swing: WristShot): Promise<void> {
+    prune(swing.tImpactMs);
+    const idx = nearestWithin(pendingShots, swing.tImpactMs);
+    if (idx >= 0) {
+      const [{ record }] = pendingShots.splice(idx, 1);
+      await attachWrist(record, swing);
+    } else {
+      // Practice swings fire the wrist unit but produce no shot — they simply
+      // age out of the buffer unmatched.
+      pendingSwings.push({ swing, at: swing.tImpactMs });
+    }
   }
 
   monitor.on('connection', (connection) => set({ connection }));
@@ -157,6 +228,9 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
   monitor.on('ballDetected', (_mode, exists) => set({ ballReady: exists }));
   monitor.on('shot', (measured) => {
     void handleShot(measured).catch((err: Error) => onError(err));
+  });
+  wrist?.on('swing', (swing) => {
+    void handleSwing(swing).catch((err: Error) => onError(err));
   });
 
   return store;

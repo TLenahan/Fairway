@@ -7,7 +7,36 @@ import {
   FlightResultSchema,
   MeasuredShotSchema,
   ShotDataEX1Schema,
+  ShotRecordSchema,
+  WristShot,
+  WristShotSchema,
 } from './index';
+
+const wristShotFixture: WristShot = {
+  tImpactMs: 1783975921445,
+  durationMs: 780,
+  peakAngularSpeedDegS: 645.2,
+  calibrated: false,
+  address: {
+    tMs: 1783975920500,
+    angularSpeedDegS: 12,
+    angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
+    rotVecDeg: [16.1, -47.8, -4.5],
+  },
+  top: {
+    tMs: 1783975921000,
+    angularSpeedDegS: 40,
+    angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
+    rotVecDeg: [14.1, 13.1, -3.0],
+  },
+  impact: {
+    tMs: 1783975921445,
+    angularSpeedDegS: 645.2,
+    angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
+    rotVecDeg: [10.6, 40.2, -3.9],
+  },
+  shock: { tMs: 1783975921445, offsetFromImpactMs: 0, peakAbsLsb: 5123 },
+};
 
 describe('@golf/types contracts', () => {
   it('parses the real captured shotdataEX1 fixture', () => {
@@ -67,6 +96,48 @@ describe('@golf/types contracts', () => {
       computed: false,
     });
     expect(result.success).toBe(false);
+  });
+
+  it('parses a WristShot and attaches it to a ShotRecord', () => {
+    const wrist = WristShotSchema.parse(wristShotFixture);
+    expect(wrist.calibrated).toBe(false);
+    expect(wrist.impact.angles.extensionDeg).toBeNull();
+
+    const record = ShotRecordSchema.parse({
+      id: 'r1',
+      sessionId: 's1',
+      clubId: 'c1',
+      shotGuid: 'g-1',
+      capturedAt: 1783975921450,
+      discarded: false,
+      measured: {
+        shotGuid: 'g-1',
+        handedness: 'right',
+        impactTimestamp: 1783975921445500,
+        ball: fixture.expected_decode_SI.ball,
+        club: fixture.expected_decode_SI.club,
+        assurance: {
+          spin: 97,
+          clubSpeed: 95,
+          clubPath: 95,
+          faceAngle: 0,
+          attackAngle: 95,
+          loftAngle: 0,
+          lieAngle: 0,
+          faceImpactLateral: 0,
+          faceImpactVertical: 0,
+        },
+        smashFactor: fixture.expected_decode_SI.smashFactor,
+        shotImgPath: null,
+      },
+      flight: null,
+      wrist: wristShotFixture,
+    });
+    expect(record.wrist?.peakAngularSpeedDegS).toBeCloseTo(645.2);
+
+    // wrist is optional — a shot with no wrist unit still parses
+    const noWrist = ShotRecordSchema.parse({ ...record, wrist: undefined });
+    expect(noWrist.wrist).toBeUndefined();
   });
 
   it('validates club and analysis verdict shapes', () => {

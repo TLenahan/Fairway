@@ -122,6 +122,7 @@ export interface ShotRow {
   landing_x_m: number | null;
   landing_z_m: number | null;
   flight_path_json: string | null;
+  wrist_json: string | null;
   raw_json: string;
 }
 
@@ -189,6 +190,9 @@ export function mapShotRow(row: ShotRow): ShotRecord {
             rolloutM: row.rollout_m,
             computed: true,
           },
+    wrist: row.wrist_json
+      ? (JSON.parse(row.wrist_json) as unknown)
+      : undefined,
   });
 }
 

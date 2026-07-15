@@ -3,6 +3,7 @@ import { Club } from './club';
 import { FlightResult } from './flight';
 import { Session } from './session';
 import { MeasuredShot, ShotRecord } from './shot';
+import { WristShot } from './wrist';
 
 /* ───────────────────────── persistence — WP2 public API ───────────────────────── */
 export interface DataStore {
@@ -28,6 +29,8 @@ export interface DataStore {
     flight: FlightResult | null,
   ): Promise<ShotRecord>;
   attachFlight(shotId: string, flight: FlightResult): Promise<void>;
+  /** Late-attach wrist mechanics once a swing is correlated to this shot. */
+  attachWrist(shotId: string, wrist: WristShot): Promise<void>;
   setShotDiscarded(shotId: string, discarded: boolean): Promise<void>;
   listShots(sessionId: string): Promise<ShotRecord[]>;
   listShotsByClub(

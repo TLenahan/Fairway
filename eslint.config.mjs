@@ -33,6 +33,7 @@ export default [
               sourceTag: 'lib:store',
               onlyDependOnLibsWithTags: ['lib:types', 'lib:monitor', 'lib:data'],
             },
+            { sourceTag: 'lib:wrist', onlyDependOnLibsWithTags: ['lib:types'] },
             {
               sourceTag: 'lib:analysis',
               onlyDependOnLibsWithTags: ['lib:types', 'lib:analytics'],

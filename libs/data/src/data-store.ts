@@ -292,6 +292,13 @@ export function createDataStore(
       );
     },
 
+    async attachWrist(shotId, wrist) {
+      await db.runAsync('UPDATE shots SET wrist_json = ? WHERE id = ?', [
+        JSON.stringify(wrist),
+        shotId,
+      ]);
+    },
+
     async setShotDiscarded(shotId, discarded) {
       await db.runAsync('UPDATE shots SET discarded = ? WHERE id = ?', [
         discarded ? 1 : 0,

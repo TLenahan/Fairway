@@ -1,4 +1,4 @@
-import { FlightResult, MeasuredShot } from '@golf/types';
+import { FlightResult, MeasuredShot, WristShot } from '@golf/types';
 
 import { createDataStore, DuplicateShotError } from './data-store';
 import { runMigrations } from './migrations';
@@ -67,6 +67,32 @@ const env = {
   altitudeM: 1849,
   temperatureC: null,
   presetName: 'Home ~6,000 ft',
+};
+
+const wristFixture: WristShot = {
+  tImpactMs: 1783975921445,
+  durationMs: 780,
+  peakAngularSpeedDegS: 645.2,
+  calibrated: false,
+  address: {
+    tMs: 1783975920500,
+    angularSpeedDegS: 12,
+    angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
+    rotVecDeg: [16.1, -47.8, -4.5],
+  },
+  top: {
+    tMs: 1783975921000,
+    angularSpeedDegS: 40,
+    angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
+    rotVecDeg: [14.1, 13.1, -3.0],
+  },
+  impact: {
+    tMs: 1783975921445,
+    angularSpeedDegS: 645.2,
+    angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
+    rotVecDeg: [10.6, 40.2, -3.9],
+  },
+  shock: { tMs: 1783975921445, offsetFromImpactMs: 0, peakAbsLsb: 5123 },
 };
 
 async function build() {
@@ -157,6 +183,40 @@ describe('createDataStore', () => {
     expect(withFlight.flight?.carryM).toBeCloseTo(132.4);
     expect(withFlight.flight?.path).toHaveLength(2);
     expect(withFlight.flight?.landing).toEqual({ x: 132.4, z: -3.1 });
+  });
+
+  it('attachWrist round-trips wrist mechanics (absent until attached)', async () => {
+    const { store } = await build();
+    const club = await store.createClub({
+      name: '7 Iron',
+      category: 'iron',
+      swingTag: 'full',
+      loftDeg: 34,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    });
+    const session = await store.createSession({
+      name: null,
+      notes: null,
+      startedAt: 1,
+      environment: env,
+    });
+    const shot = await store.insertShot(
+      session.id,
+      club.id,
+      measured('g-1'),
+      null,
+    );
+
+    const [before] = await store.listShots(session.id);
+    expect(before.wrist).toBeUndefined();
+
+    await store.attachWrist(shot.id, wristFixture);
+    const [after] = await store.listShots(session.id);
+    expect(after.wrist?.peakAngularSpeedDegS).toBeCloseTo(645.2);
+    expect(after.wrist?.impact.angles.extensionDeg).toBeNull();
   });
 
   it('throws DuplicateShotError on a replayed shot_guid', async () => {

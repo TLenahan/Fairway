@@ -17,7 +17,9 @@
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.ACCESS_WIFI_STATE",
-        "android.permission.CHANGE_WIFI_MULTICAST_STATE"
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT"
       ]
     },
     "ios": {
@@ -25,6 +27,7 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Fairway connects to your Uneekor EYE MINI launch monitor over your local network to discover it and receive shot data.",
+        "NSBluetoothAlwaysUsageDescription": "Fairway connects to your HackMotion wrist sensor over Bluetooth to record wrist mechanics during your swing.",
         "NSBonjourServices": [
           "_uneekor._tcp",
           "_http._tcp"

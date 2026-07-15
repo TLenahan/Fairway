@@ -124,6 +124,14 @@ export const MIGRATIONS: Migration[] = [
       await db.execAsync('ALTER TABLE clubs ADD COLUMN focus_note TEXT');
     },
   },
+  {
+    version: 4,
+    async up(db) {
+      // wrist mechanics (@golf/wrist WristShot) joined to this shot by impact
+      // arrival time; NULL when no wrist unit was connected or nothing matched
+      await db.execAsync('ALTER TABLE shots ADD COLUMN wrist_json TEXT');
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {

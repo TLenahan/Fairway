@@ -1,0 +1,7 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "wrist",
+  "sourceRoot": "libs/wrist/src",
+  "projectType": "library",
+  "tags": ["scope:golf", "type:util", "lib:wrist"]
+}

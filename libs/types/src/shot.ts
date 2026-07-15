@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { Handedness } from './enums';
 import { FlightResultSchema } from './flight';
+import { WristShotSchema } from './wrist';
 
 /* ───────────────────────── raw wire shot (monitor input) ─────────────────────────
    The exact shape of param.shotdataEX1 from the device. Values are integers ×1000,
@@ -103,5 +104,8 @@ export const ShotRecordSchema = z.object({
   discarded: z.boolean(),
   measured: MeasuredShotSchema,
   flight: FlightResultSchema.nullable(), // null until flight-model runs
+  // Wrist mechanics joined from @golf/wrist by impact-arrival time. Absent when
+  // no wrist unit was connected, or no swing matched this shot.
+  wrist: WristShotSchema.optional(),
 });
 export type ShotRecord = z.infer<typeof ShotRecordSchema>;
