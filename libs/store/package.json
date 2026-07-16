@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@golf/drill": "workspace:*",
     "@golf/types": "workspace:*",
     "zustand": "^5.0.2"
   }

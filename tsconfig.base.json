@@ -20,6 +20,7 @@
       "@golf/types": ["./libs/types/src/index.ts"],
       "@golf/monitor": ["./libs/monitor/src/index.ts"],
       "@golf/wrist": ["./libs/wrist/src/index.ts"],
+      "@golf/drill": ["./libs/drill/src/index.ts"],
       "@golf/data": ["./libs/data/src/index.ts"],
       "@golf/flight-model": ["./libs/flight-model/src/index.ts"],
       "@golf/analytics": ["./libs/analytics/src/index.ts"],

@@ -2299,6 +2299,15 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@golf/drill@workspace:*, @golf/drill@workspace:libs/drill":
+  version: 0.0.0-use.local
+  resolution: "@golf/drill@workspace:libs/drill"
+  dependencies:
+    "@golf/analytics": "workspace:*"
+    "@golf/types": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
 "@golf/fairway-app@workspace:apps/fairway":
   version: 0.0.0-use.local
   resolution: "@golf/fairway-app@workspace:apps/fairway"
@@ -2307,16 +2316,21 @@ __metadata:
     "@golf/analysis": "workspace:*"
     "@golf/analytics": "workspace:*"
     "@golf/data": "workspace:*"
+    "@golf/drill": "workspace:*"
     "@golf/flight-model": "workspace:*"
     "@golf/monitor": "workspace:*"
     "@golf/store": "workspace:*"
     "@golf/types": "workspace:*"
     "@golf/ui": "workspace:*"
     "@golf/viz": "workspace:*"
+    "@golf/wrist": "workspace:*"
     "@types/react": "npm:^19.1.1"
+    buffer: "npm:^6.0.3"
     expo: "npm:~57.0.4"
+    expo-audio: "npm:~57.0.2"
     expo-constants: "npm:~57.0.3"
     expo-dev-client: "npm:~57.0.5"
+    expo-haptics: "npm:~57.0.1"
     expo-keep-awake: "npm:~57.0.0"
     expo-linking: "npm:~57.0.2"
     expo-router: "npm:~57.0.4"
@@ -2329,6 +2343,7 @@ __metadata:
     react: "npm:19.2.3"
     react-dom: "npm:19.2.3"
     react-native: "npm:0.86.0"
+    react-native-ble-plx: "npm:^3.5.1"
     react-native-gesture-handler: "npm:~2.32.0"
     react-native-reanimated: "npm:4.5.0"
     react-native-safe-area-context: "npm:~5.7.0"
@@ -2368,6 +2383,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@golf/store@workspace:libs/store"
   dependencies:
+    "@golf/drill": "workspace:*"
     "@golf/types": "workspace:*"
     zustand: "npm:^5.0.2"
   languageName: unknown
@@ -2401,6 +2417,20 @@ __metadata:
     react: "*"
     react-native: "*"
     react-native-svg: "*"
+  languageName: unknown
+  linkType: soft
+
+"@golf/wrist@workspace:*, @golf/wrist@workspace:libs/wrist":
+  version: 0.0.0-use.local
+  resolution: "@golf/wrist@workspace:libs/wrist"
+  dependencies:
+    "@golf/types": "workspace:*"
+    zod: "npm:^3.24.4"
+  peerDependencies:
+    react-native-ble-plx: "*"
+  peerDependenciesMeta:
+    react-native-ble-plx:
+      optional: true
   languageName: unknown
   linkType: soft
 
@@ -6334,6 +6364,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"buffer@npm:^6.0.3":
+  version: 6.0.3
+  resolution: "buffer@npm:6.0.3"
+  dependencies:
+    base64-js: "npm:^1.3.1"
+    ieee754: "npm:^1.2.1"
+  checksum: 10c0/2a905fbbcde73cc5d8bd18d1caa23715d5f83a5935867c2329f0ac06104204ba7947be098fe1317fbd8830e26090ff8e764f08cd14fefc977bb248c3487bcbd0
+  languageName: node
+  linkType: hard
+
 "bytes@npm:3.1.2, bytes@npm:~3.1.2":
   version: 3.1.2
   resolution: "bytes@npm:3.1.2"
@@ -7688,6 +7728,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"expo-audio@npm:~57.0.2":
+  version: 57.0.2
+  resolution: "expo-audio@npm:57.0.2"
+  peerDependencies:
+    expo: "*"
+    expo-asset: "*"
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/3cb5d3d38c935c470a72f2cb89965e23ade3328c8954f2a21acb15464f6edef05ebcc28a8551047991da32b64dc881e167b6eeba40bd9bfd088286d2fd288060
+  languageName: node
+  linkType: hard
+
 "expo-constants@npm:~57.0.3":
   version: 57.0.3
   resolution: "expo-constants@npm:57.0.3"
@@ -7781,6 +7833,15 @@ __metadata:
     react: "*"
     react-native: "*"
   checksum: 10c0/580d3cd621c2377675ef6c730ddcc7814ea1b24182a3315de68e12f5682af8e0fcf04be90032b6f764b40211a328638d4bb4af2b15875f5252de247b10358aa5
+  languageName: node
+  linkType: hard
+
+"expo-haptics@npm:~57.0.1":
+  version: 57.0.1
+  resolution: "expo-haptics@npm:57.0.1"
+  peerDependencies:
+    expo: "*"
+  checksum: 10c0/60f69e0b062a48dab9904cd910996049ef5b64c354f532fccc219bc07470ae2592df55b25f0a14d47b6daebd77b3e47d334e04d5fc6b23e53932c1fbed1fa59b
   languageName: node
   linkType: hard
 
@@ -8974,7 +9035,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ieee754@npm:1.2.1, ieee754@npm:^1.1.13":
+"ieee754@npm:1.2.1, ieee754@npm:^1.1.13, ieee754@npm:^1.2.1":
   version: 1.2.1
   resolution: "ieee754@npm:1.2.1"
   checksum: 10c0/b0782ef5e0935b9f12883a2e2aa37baa75da6e66ce6515c168697b42160807d9330de9a32ec1ed73149aea02e0d822e572bca6f1e22bdcbd2149e13b050b17bb
@@ -12000,6 +12061,16 @@ __metadata:
   version: 16.13.1
   resolution: "react-is@npm:16.13.1"
   checksum: 10c0/33977da7a5f1a287936a0c85639fec6ca74f4f15ef1e59a6bc20338fc73dc69555381e211f7a3529b8150a1f71e4225525b41b60b52965bda53ce7d47377ada1
+  languageName: node
+  linkType: hard
+
+"react-native-ble-plx@npm:^3.5.1":
+  version: 3.5.1
+  resolution: "react-native-ble-plx@npm:3.5.1"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+  checksum: 10c0/a49f50e0d76cede43836d82c422e022eb2f9f4895416c5a739eaecce122d50950e3f93030c02c4a9c10bd9962735e3927c19ec6b75f878296cc98937b56a31c1
   languageName: node
   linkType: hard
 

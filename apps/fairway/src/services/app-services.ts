@@ -18,6 +18,7 @@ import {
 } from '../../modules/practice-keepalive';
 import { getApiKey } from './api-key';
 import { AppServices } from './context';
+import { createNativeWristService } from './rn-ble-wrist-transport';
 import { createSettingsStore, loadSettings } from './settings';
 
 /**
@@ -44,6 +45,7 @@ export async function createAppServices(
 
   const settings = createSettingsStore(await loadSettings());
   const monitor = createNativeMonitorService();
+  const wrist = createNativeWristService();
 
   const analysis = createAnalysisService({
     getApiKey,
@@ -54,6 +56,7 @@ export async function createAppServices(
 
   const store = createFairwayStore({
     monitor,
+    wrist,
     data,
     flightModel,
     getDefaultEnvironment: () => settings.getState().environment,
@@ -63,6 +66,7 @@ export async function createAppServices(
   // surface transport/protocol errors — a silent socket failure cost us a
   // debugging session once already
   monitor.on('error', onError);
+  wrist.on('error', onError);
 
   // On (re)connect: reflect persisted handedness on the sensor and hold the
   // keep-alive foreground service for exactly the connected span, so shots
@@ -81,6 +85,7 @@ export async function createAppServices(
 
   return {
     monitor,
+    wrist,
     data,
     analytics: { summarizeSession, summarizeClub },
     analysis,

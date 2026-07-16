@@ -29,6 +29,9 @@ export const SettingsSchema = z.object({
   // sanitizeTileOrder, and the default keeps pre-existing saved settings
   // parsing after this field was added
   tileOrder: z.array(z.string()).default([...METRIC_TILE_KEYS]),
+  // wedges picked for the distance drill (≤3 club ids); the default keeps
+  // pre-existing saved settings parsing after this field was added
+  drillWedgeIds: z.array(z.string()).default([]),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -41,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   deepAnalysis: false,
   savedDeviceIp: null,
   tileOrder: [...METRIC_TILE_KEYS],
+  drillWedgeIds: [],
 };
 
 const STORAGE_KEY = 'fairway.settings.v1';
@@ -74,6 +78,7 @@ const settingsOf = (state: SettingsState): Settings =>
     deepAnalysis: state.deepAnalysis,
     savedDeviceIp: state.savedDeviceIp,
     tileOrder: state.tileOrder,
+    drillWedgeIds: state.drillWedgeIds,
   });
 
 export async function loadSettings(): Promise<Settings> {

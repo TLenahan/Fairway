@@ -21,11 +21,22 @@ export interface WristBleConnection {
 export type BleAvailability = 'ready' | 'poweredOff' | 'unauthorized' | 'unknown';
 
 export interface WristBleTransport {
-  /** Scan for HackMotion advertisers; call onDevice for each match. */
-  startScan(onDevice: (device: WristBleDevice) => void): void;
+  /**
+   * Scan for HackMotion advertisers; call onDevice for each match. A scan
+   * request made before the radio is ready must be held and started once it
+   * is. onError surfaces scan failures (permission denied, radio off) —
+   * without it a dead scan is indistinguishable from an empty range.
+   */
+  startScan(
+    onDevice: (device: WristBleDevice) => void,
+    onError?: (err: Error) => void,
+  ): void;
   stopScan(): void;
   /** Connect, discover the pipe service/characteristic, and subscribe. */
   connect(deviceId: string): Promise<WristBleConnection>;
   /** Radio / permission availability, for the connection state machine. */
   availability(): BleAvailability;
+  /** Optional push channel for radio/permission transitions, so the service
+      can keep its scanning state truthful across Bluetooth toggles. */
+  onAvailabilityChange?(handler: (availability: BleAvailability) => void): void;
 }

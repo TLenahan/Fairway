@@ -1,23 +1,52 @@
-import { DiscoveredDevice } from '@golf/types';
+import {
+  DiscoveredDevice,
+  WristConnectionState,
+  WristDevice,
+} from '@golf/types';
 import { Button, Card, SectionTitle, tw } from '@golf/ui';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Text, TextInput, View } from 'react-native';
+import { ScrollView, Text, TextInput, View } from 'react-native';
+import { z } from 'zod';
 
 import { ConnectionDot } from '@/components/ConnectionDot';
 import { useFairwayStore, useServices, useSettings } from '@/services/context';
 
+type WristConnection = z.infer<typeof WristConnectionState>;
+
+// wrist states are a different enum from the monitor's ConnectionState, so
+// they get their own dot palette instead of reusing ConnectionDot
+const wristDotByState: Record<WristConnection, string> = {
+  disconnected: 'bg-silver',
+  scanning: 'bg-warning',
+  connecting: 'bg-warning',
+  connected: 'bg-green-500',
+  error: 'bg-danger',
+  unauthorized: 'bg-danger',
+  poweredOff: 'bg-danger',
+};
+
 export default function ConnectScreen() {
   const router = useRouter();
-  const { monitor, settings } = useServices();
+  const { monitor, wrist, settings } = useServices();
   const connection = useFairwayStore((s) => s.connection);
   const connect = useFairwayStore((s) => s.connect);
+  const wristConnection = useFairwayStore((s) => s.wristConnection);
+  const wristBatteryPercent = useFairwayStore((s) => s.wristBatteryPercent);
+  const startWristScan = useFairwayStore((s) => s.startWristScan);
+  const stopWristScan = useFairwayStore((s) => s.stopWristScan);
+  const connectWrist = useFairwayStore((s) => s.connectWrist);
+  const disconnectWrist = useFairwayStore((s) => s.disconnectWrist);
   const savedIp = useSettings((s) => s.savedDeviceIp);
 
   const [devices, setDevices] = useState<DiscoveredDevice[]>([]);
   const [manualIp, setManualIp] = useState(savedIp ?? '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [wristDevices, setWristDevices] = useState<WristDevice[]>([]);
+  const [wristError, setWristError] = useState<string | null>(null);
+  const [wristBusy, setWristBusy] = useState(false);
 
   useEffect(() => {
     const onDevice = (device: DiscoveredDevice) =>
@@ -34,6 +63,22 @@ export default function ConnectScreen() {
     };
   }, [monitor]);
 
+  useEffect(() => {
+    // re-emits for a known id carry fresh serial/battery — merge, don't dedupe
+    const onWristDevice = (device: WristDevice) =>
+      setWristDevices((known) =>
+        known.some((d) => d.id === device.id)
+          ? known.map((d) => (d.id === device.id ? device : d))
+          : [...known, device],
+      );
+    wrist.on('device', onWristDevice);
+    startWristScan();
+    return () => {
+      wrist.off('device', onWristDevice);
+      stopWristScan();
+    };
+  }, [wrist, startWristScan, stopWristScan]);
+
   const connectTo = async (ip: string) => {
     setBusy(true);
     setError(null);
@@ -48,8 +93,23 @@ export default function ConnectScreen() {
     }
   };
 
+  const connectWristTo = async (deviceId: string) => {
+    setWristBusy(true);
+    setWristError(null);
+    try {
+      await connectWrist(deviceId);
+    } catch (err) {
+      setWristError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setWristBusy(false);
+    }
+  };
+
   return (
-    <View style={tw`flex-1 bg-ivory p-4`}>
+    <ScrollView
+      style={tw`flex-1 bg-ivory`}
+      contentContainerStyle={tw`p-4 pb-8`}
+    >
       <ConnectionDot state={connection} />
 
       {connection === 'localNetworkDenied' && (
@@ -116,6 +176,75 @@ export default function ConnectScreen() {
       {error && connection !== 'localNetworkDenied' && (
         <Text style={tw`mt-3 text-sm text-danger`}>{error}</Text>
       )}
-    </View>
+
+      <SectionTitle title="Wrist sensor" />
+      <View style={tw`flex-row items-center justify-between`}>
+        <View style={tw`flex-row items-center gap-2`}>
+          <View
+            style={tw.style(
+              'h-2.5 w-2.5 rounded-full',
+              wristDotByState[wristConnection],
+            )}
+          />
+          <Text style={tw`text-sm text-ink`}>{wristConnection}</Text>
+          {wristBatteryPercent !== null && (
+            <Text style={tw`text-xs text-silver`}>
+              {wristBatteryPercent}% battery
+            </Text>
+          )}
+        </View>
+        {wristConnection === 'connected' && (
+          <Button
+            label="Disconnect"
+            variant="ghost"
+            compact
+            onPress={disconnectWrist}
+          />
+        )}
+      </View>
+      {(wristConnection === 'unauthorized' ||
+        wristConnection === 'poweredOff') && (
+        <Text style={tw`mt-1 text-sm text-silver`}>
+          {wristConnection === 'unauthorized'
+            ? 'Bluetooth permission was denied — allow it for Fairway in system settings.'
+            : 'Bluetooth is off — turn it on to scan.'}
+        </Text>
+      )}
+      {wristDevices.length === 0 ? (
+        wristConnection === 'scanning' && (
+          <Text style={tw`mt-2 text-sm text-silver`}>
+            Scanning for a HackMotion unit… make sure it's awake and the vendor
+            app is closed.
+          </Text>
+        )
+      ) : (
+        <View style={tw`mt-2`}>
+          {wristDevices.map((device) => (
+            <Card key={device.id} style={tw`mb-2`}>
+              <View style={tw`flex-row items-center justify-between`}>
+                <View>
+                  <Text style={tw`font-semibold text-ink`}>{device.name}</Text>
+                  {device.serial && (
+                    <Text style={tw`text-xs text-silver`}>
+                      s/n {device.serial}
+                    </Text>
+                  )}
+                </View>
+                <Button
+                  label="Connect"
+                  compact
+                  loading={wristBusy}
+                  disabled={wristConnection === 'connected'}
+                  onPress={() => void connectWristTo(device.id)}
+                />
+              </View>
+            </Card>
+          ))}
+        </View>
+      )}
+      {wristError && (
+        <Text style={tw`mt-3 text-sm text-danger`}>{wristError}</Text>
+      )}
+    </ScrollView>
   );
 }

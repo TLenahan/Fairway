@@ -2,6 +2,7 @@ import {
   AnalysisRecord,
   Club,
   DataStore,
+  DrillRep,
   FlightModel,
   FlightResult,
   MeasuredShot,
@@ -104,7 +105,9 @@ class FakeData implements DataStore {
   clubs: Club[] = [];
   sessions: Session[] = [];
   shots: ShotRecord[] = [];
+  drillReps: DrillRep[] = [];
   private nextId = 1;
+  private nextCreatedAt = 1;
 
   async createClub(
     input: Omit<Club, 'id' | 'createdAt' | 'sensorMode'>,
@@ -193,6 +196,32 @@ class FakeData implements DataStore {
   async listAnalyses(): Promise<AnalysisRecord[]> {
     return [];
   }
+  async insertDrillRep(
+    input: Omit<DrillRep, 'id' | 'createdAt'>,
+  ): Promise<DrillRep> {
+    const created: DrillRep = {
+      ...input,
+      id: `rep-${this.nextId++}`,
+      createdAt: this.nextCreatedAt++,
+    };
+    this.drillReps.push(created);
+    return created;
+  }
+  async setDrillRepCarry(
+    repId: string,
+    shotId: string,
+    carryM: number,
+  ): Promise<void> {
+    const rep = this.drillReps.find((r) => r.id === repId);
+    if (!rep) throw new Error('missing');
+    rep.shotId = shotId;
+    rep.carryM = carryM;
+  }
+  async listDrillReps(clubIds: string[]): Promise<DrillRep[]> {
+    return this.drillReps
+      .filter((r) => clubIds.includes(r.clubId))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
 }
 
 type WristHandler = WristServiceEvents[keyof WristServiceEvents];
@@ -206,10 +235,7 @@ class FakeWrist implements WristService {
   getState(): 'disconnected' {
     return 'disconnected';
   }
-  on<K extends keyof WristServiceEvents>(
-    e: K,
-    h: WristServiceEvents[K],
-  ): void {
+  on<K extends keyof WristServiceEvents>(e: K, h: WristServiceEvents[K]): void {
     this.handlers.set(e, [...(this.handlers.get(e) ?? []), h]);
   }
   off(): void {}
@@ -223,7 +249,10 @@ class FakeWrist implements WristService {
   }
 }
 
-const swingAt = (tImpactMs: number): WristShot => {
+const swingAt = (
+  tImpactMs: number,
+  topRotVecDeg: [number, number, number] = [1, 2, 3],
+): WristShot => {
   const kf = {
     tMs: tImpactMs,
     angularSpeedDegS: 100,
@@ -236,7 +265,7 @@ const swingAt = (tImpactMs: number): WristShot => {
     peakAngularSpeedDegS: 480,
     calibrated: false,
     address: kf,
-    top: kf,
+    top: { ...kf, rotVecDeg: topRotVecDeg },
     impact: kf,
     shock: { tMs: tImpactMs, offsetFromImpactMs: 0, peakAbsLsb: 4000 },
   };
@@ -278,6 +307,29 @@ async function withActiveIron(store: ReturnType<typeof build>['store']) {
     focusNote: null,
     archived: false,
   });
+}
+
+async function createWedge(
+  data: FakeData,
+  name: string,
+  loftDeg: number,
+): Promise<Club> {
+  return data.createClub({
+    name,
+    category: 'wedge',
+    swingTag: null,
+    loftDeg,
+    notes: null,
+    tracerColor: null,
+    focusNote: null,
+    archived: false,
+  });
+}
+
+function drillOf(store: ReturnType<typeof build>['store']) {
+  const drill = store.getState().drill;
+  if (!drill) throw new Error('drill mode is off');
+  return drill;
 }
 
 describe('createFairwayStore', () => {
@@ -447,5 +499,189 @@ describe('createFairwayStore', () => {
     await flush();
     expect(errors).toHaveLength(0);
     expect(store.getState().sessionShots[0].wrist).toBeUndefined();
+  });
+});
+
+describe('createFairwayStore — wrist slice', () => {
+  it('mirrors wrist connection, device, and battery events', () => {
+    const wrist = new FakeWrist();
+    const { store } = build({ wrist });
+    expect(store.getState().wristConnection).toBe('disconnected');
+
+    wrist.emit('connection', 'connected');
+    wrist.emit('device', {
+      id: 'hm-1',
+      name: 'HackMotion',
+      serial: null,
+      batteryPercent: null,
+    });
+    wrist.emit('battery', 85, 3900);
+
+    const state = store.getState();
+    expect(state.wristConnection).toBe('connected');
+    expect(state.wristDevice?.id).toBe('hm-1');
+    expect(state.wristBatteryPercent).toBe(85);
+  });
+
+  it('rejects connectWrist when no wrist service is configured', async () => {
+    const { store } = build();
+    await expect(store.getState().connectWrist('hm-1')).rejects.toThrow(
+      'No wrist sensor configured',
+    );
+    // scan/disconnect are safe no-ops without a service
+    store.getState().startWristScan();
+    store.getState().stopWristScan();
+    store.getState().disconnectWrist();
+    expect(store.getState().wristConnection).toBe('disconnected');
+  });
+});
+
+describe('createFairwayStore — drill mode', () => {
+  it('records a calibrating rep and fires lastRep when no target exists', async () => {
+    const wrist = new FakeWrist();
+    const { data, store, errors } = build({ wrist });
+    const wedge = await createWedge(data, '56°', 56);
+    await store.getState().startDrill([wedge.id]);
+    await store.getState().selectDrillRung(wedge.id, 'mid');
+
+    wrist.emit('swing', swingAt(Date.now(), [40, 0, 0]));
+    await flush();
+
+    expect(errors).toHaveLength(0);
+    expect(data.drillReps).toHaveLength(1);
+    expect(data.drillReps[0]).toMatchObject({
+      clubId: wedge.id,
+      rung: 'mid',
+      outcome: 'calibrating',
+      targetAngleDeg: null,
+      topAngleDeg: 40,
+      shotId: null,
+      carryM: null,
+    });
+    expect(drillOf(store).lastRep).toMatchObject({
+      repId: data.drillReps[0].id,
+      clubId: wedge.id,
+      rung: 'mid',
+      outcome: 'calibrating',
+      topAngleDeg: 40,
+      targetAngleDeg: null,
+      deltaDeg: null,
+    });
+  });
+
+  it('learns the full anchor and ladders partial targets from joined carries', async () => {
+    const wrist = new FakeWrist();
+    const { monitor, data, store, errors } = build({ wrist });
+    const wedge = await createWedge(data, '56°', 56);
+    await store.getState().startDrill([wedge.id]);
+    await store.getState().selectDrillRung(wedge.id, 'full');
+
+    const tops: [number, number, number][] = [
+      [76, 0, 0],
+      [84, 0, 0],
+      [80, 0, 0],
+    ];
+    for (const [i, top] of tops.entries()) {
+      wrist.emit('swing', swingAt(Date.now(), top));
+      await flush();
+      monitor.emit('shot', measuredFixture(`g-full-${i}`));
+      await flush();
+    }
+
+    expect(errors).toHaveLength(0);
+    const [full, mid, low] = drillOf(store).plan.wedges[0].rungs;
+    expect(full.rung).toBe('full');
+    expect(full.status).toBe('ready');
+    expect(full.targetAngleDeg).toBe(80); // median of 76 / 84 / 80
+    expect(full.targetCarryM).toBe(150);
+    expect(full.carry).toEqual({ n: 3, meanM: 150, sdM: 0 });
+    // 3-point even grid over [floor, 150] → partials at 18.288 and 84.144
+    expect(mid.rung).toBe('mid');
+    expect(mid.status).toBe('ready');
+    expect(mid.targetCarryM).toBeCloseTo(84.144, 2);
+    expect(low.rung).toBe('low');
+    expect(low.status).toBe('ready');
+    expect(low.targetCarryM).toBeCloseTo(18.288, 2);
+    if (mid.targetAngleDeg === null || low.targetAngleDeg === null) {
+      throw new Error('partial targets missing');
+    }
+    expect(low.targetAngleDeg).toBeLessThan(mid.targetAngleDeg);
+    expect(mid.targetAngleDeg).toBeLessThan(80);
+
+    // reps persist: restarting the drill rebuilds the plan from the store
+    store.getState().endDrill();
+    await store.getState().startDrill([wedge.id]);
+    expect(drillOf(store).plan.wedges[0].rungs[0].status).toBe('ready');
+  });
+
+  it('attaches a joined carry to the rep in both arrival orders', async () => {
+    const wrist = new FakeWrist();
+    const { monitor, data, store, errors } = build({ wrist });
+    const wedge = await createWedge(data, '56°', 56);
+    await store.getState().startDrill([wedge.id]);
+    await store.getState().selectDrillRung(wedge.id, 'full');
+
+    // shot first: the swing's rep must exist before the join fires
+    monitor.emit('shot', measuredFixture('g-a'));
+    await flush();
+    wrist.emit('swing', swingAt(Date.now()));
+    await flush();
+
+    expect(errors).toHaveLength(0);
+    expect(data.drillReps[0].carryM).toBe(150);
+    expect(data.drillReps[0].shotId).toBe(data.shots[0].id);
+    expect(drillOf(store).plan.wedges[0].rungs[0].carry?.n).toBe(1);
+
+    // swing first: the carry lands when the shot arrives ~1 s later
+    wrist.emit('swing', swingAt(Date.now()));
+    await flush();
+    expect(data.drillReps[1].carryM).toBeNull();
+    monitor.emit('shot', measuredFixture('g-b'));
+    await flush();
+
+    expect(data.drillReps[1].carryM).toBe(150);
+    expect(data.drillReps[1].shotId).toBe(data.shots[1].id);
+    expect(drillOf(store).plan.wedges[0].rungs[0].carry?.n).toBe(2);
+  });
+
+  it('records no reps when drill is off or no rung is active', async () => {
+    const wrist = new FakeWrist();
+    const { data, store } = build({ wrist });
+    const wedge = await createWedge(data, '56°', 56);
+
+    wrist.emit('swing', swingAt(Date.now())); // drill off
+    await flush();
+    expect(data.drillReps).toHaveLength(0);
+
+    await store.getState().startDrill([wedge.id]);
+    wrist.emit('swing', swingAt(Date.now())); // drill on, observe-only
+    await flush();
+    expect(data.drillReps).toHaveLength(0);
+  });
+
+  it('endDrill clears drill state and stops judging swings', async () => {
+    const wrist = new FakeWrist();
+    const { data, store } = build({ wrist });
+    const wedge = await createWedge(data, '56°', 56);
+    await store.getState().startDrill([wedge.id]);
+    await store.getState().selectDrillRung(wedge.id, 'full');
+    wrist.emit('swing', swingAt(Date.now()));
+    await flush();
+    expect(data.drillReps).toHaveLength(1);
+
+    store.getState().endDrill();
+    expect(store.getState().drill).toBeNull();
+
+    wrist.emit('swing', swingAt(Date.now()));
+    await flush();
+    expect(data.drillReps).toHaveLength(1);
+  });
+
+  it('startDrill throws on an unknown club id', async () => {
+    const { store } = build();
+    await expect(store.getState().startDrill(['nope'])).rejects.toThrow(
+      'Unknown club: nope',
+    );
+    expect(store.getState().drill).toBeNull();
   });
 });
