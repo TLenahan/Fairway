@@ -1,5 +1,6 @@
 import { AnalysisRecord } from './analysis';
 import { Club } from './club';
+import { DrillRep } from './drill';
 import { FlightResult } from './flight';
 import { Session } from './session';
 import { MeasuredShot, ShotRecord } from './shot';
@@ -40,4 +41,15 @@ export interface DataStore {
   // analyses
   saveAnalysis(a: AnalysisRecord): Promise<void>;
   listAnalyses(sessionId: string): Promise<AnalysisRecord[]>;
+  // drill reps (wedge distance-control drill; targets are always recomputed
+  // from reps by @golf/drill, never persisted)
+  insertDrillRep(input: Omit<DrillRep, 'id' | 'createdAt'>): Promise<DrillRep>;
+  /** Late-attach the joined shot's computed carry once the Mini reports. */
+  setDrillRepCarry(
+    repId: string,
+    shotId: string,
+    carryM: number,
+  ): Promise<void>;
+  /** All reps for these wedges across all time, createdAt ascending. */
+  listDrillReps(clubIds: string[]): Promise<DrillRep[]>;
 }

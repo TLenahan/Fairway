@@ -24,11 +24,17 @@ devices' clocks are opaque and unsynced, so arrival time is the only join key.
 Persistence: `libs/data` migration **v4** adds a `wrist_json` column and
 `DataStore.attachWrist`.
 
-## What's left to resume (needs a device)
+## Status: wired into the app
 
-Everything above is wired and green. The only missing piece is the native BLE
-transport, which needs the `react-native-ble-plx` package and a dev-client
-rebuild — it can't run in this environment.
+Steps 1–3 below are DONE (kept for reference): `react-native-ble-plx` is
+installed with its config plugin, the native transport lives at
+`apps/fairway/src/services/rn-ble-wrist-transport.ts` (plus scan-robustness
+beyond the sketch: deferred scan-until-PoweredOn, surfaced scan errors,
+Android 12+ runtime permission requests, auto-restart across radio flips),
+and `app-services.ts` passes the service to the store. The pairing surface is
+ConnectScreen's "Wrist sensor" section; `@golf/drill` + the drill screen
+consume the `swing` events. Step 4 (dev-client rebuild) must be re-run on any
+machine whose client predates these native modules.
 
 ### 1. Install the package
 

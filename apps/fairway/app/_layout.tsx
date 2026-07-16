@@ -56,6 +56,7 @@ export default function RootLayout() {
           name="analysis/[sessionId]"
           options={{ title: 'AI Analysis' }}
         />
+        <Stack.Screen name="drill" options={{ title: 'Wedge drill' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack>
     </ServicesProvider>

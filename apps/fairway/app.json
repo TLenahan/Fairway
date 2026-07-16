@@ -19,7 +19,8 @@
         "android.permission.ACCESS_WIFI_STATE",
         "android.permission.CHANGE_WIFI_MULTICAST_STATE",
         "android.permission.BLUETOOTH_SCAN",
-        "android.permission.BLUETOOTH_CONNECT"
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "ios": {
@@ -40,6 +41,12 @@
       "expo-dev-client",
       "expo-sqlite",
       "expo-secure-store",
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false
+        }
+      ],
       [
         "expo-splash-screen",
         {

@@ -61,6 +61,14 @@ export class HackMotionWristService implements WristService {
     this.detectorOptions = config.detector ?? {};
     this.batteryPollMs = config.batteryPollMs ?? 30000;
     this.emitSamples = config.emitSamples ?? false;
+    // Keep the scanning state truthful across radio flips: the transport
+    // holds a pending scan through poweredOff and restarts it on ready.
+    this.transport.onAvailabilityChange?.((availability) => {
+      if (!this.scanning) return;
+      if (availability === 'ready') this.setState('scanning');
+      else if (availability === 'poweredOff') this.setState('poweredOff');
+      else if (availability === 'unauthorized') this.setState('unauthorized');
+    });
   }
 
   on<K extends keyof WristServiceEvents>(e: K, h: WristServiceEvents[K]): void {
@@ -76,21 +84,36 @@ export class HackMotionWristService implements WristService {
   }
 
   startScan(): void {
-    const availability = this.transport.availability();
-    if (availability === 'poweredOff') return this.setState('poweredOff');
-    if (availability === 'unauthorized') return this.setState('unauthorized');
+    // Register the scan even when the radio isn't ready yet — the transport
+    // holds it and starts once availability flips to ready. `scanning` must
+    // be set first so the availability subscription can promote the state.
     this.scanning = true;
-    if (this.state === 'disconnected') this.setState('scanning');
-    this.transport.startScan((device) => {
-      if (!device.name?.startsWith(ADVERTISED_NAME_PREFIX)) return;
-      this.scannedNames.set(device.id, device.name);
-      this.emitter.emit('device', {
-        id: device.id,
-        name: device.name,
-        serial: null,
-        batteryPercent: null,
-      });
-    });
+    const availability = this.transport.availability();
+    if (availability === 'poweredOff') this.setState('poweredOff');
+    else if (availability === 'unauthorized') this.setState('unauthorized');
+    else if (this.state === 'disconnected' || this.state === 'error') {
+      this.setState('scanning');
+    }
+    this.transport.startScan(
+      (device) => {
+        if (!device.name?.startsWith(ADVERTISED_NAME_PREFIX)) return;
+        this.scannedNames.set(device.id, device.name);
+        this.emitter.emit('device', {
+          id: device.id,
+          name: device.name,
+          serial: null,
+          batteryPercent: null,
+        });
+      },
+      (err) => {
+        // A dead scan must not look like an empty range.
+        const after = this.transport.availability();
+        if (after === 'unauthorized') this.setState('unauthorized');
+        else if (after === 'poweredOff') this.setState('poweredOff');
+        else if (this.state === 'scanning') this.setState('error');
+        this.emitter.emit('error', err);
+      },
+    );
   }
 
   stopScan(): void {

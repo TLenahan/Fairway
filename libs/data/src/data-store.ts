@@ -3,6 +3,7 @@ import {
   AnalysisRecord,
   Club,
   DataStore,
+  DrillRep,
   FlightResult,
   MeasuredShot,
   Session,
@@ -13,10 +14,12 @@ import { SqlDatabase, SqlValue } from './database';
 import {
   mapAnalysisRow,
   mapClubRow,
+  mapDrillRepRow,
   mapSessionRow,
   mapShotRow,
   AnalysisRow,
   ClubRow,
+  DrillRepRow,
   SessionRow,
   ShotRow,
 } from './rows';
@@ -359,6 +362,51 @@ export function createDataStore(
         [sessionId],
       );
       return rows.map(mapAnalysisRow);
+    },
+
+    /* ── drill reps ── */
+    async insertDrillRep(input) {
+      const rep: DrillRep = { ...input, id: newId(), createdAt: now() };
+      await db.runAsync(
+        `INSERT INTO drill_reps (id, club_id, rung, shot_id, t_ms, top_angle_deg,
+           top_extension_deg, backswing_ms, downswing_ms, target_angle_deg,
+           outcome, carry_m, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          rep.id,
+          rep.clubId,
+          rep.rung,
+          rep.shotId,
+          rep.tMs,
+          rep.topAngleDeg,
+          rep.topExtensionDeg,
+          rep.backswingMs,
+          rep.downswingMs,
+          rep.targetAngleDeg,
+          rep.outcome,
+          rep.carryM,
+          rep.createdAt,
+        ],
+      );
+      return rep;
+    },
+
+    async setDrillRepCarry(repId, shotId, carryM) {
+      await db.runAsync(
+        'UPDATE drill_reps SET shot_id = ?, carry_m = ? WHERE id = ?',
+        [shotId, carryM, repId],
+      );
+    },
+
+    async listDrillReps(clubIds) {
+      if (clubIds.length === 0) return [];
+      const placeholders = clubIds.map(() => '?').join(', ');
+      const rows = await db.getAllAsync<DrillRepRow>(
+        `SELECT * FROM drill_reps WHERE club_id IN (${placeholders})
+         ORDER BY created_at ASC`,
+        clubIds,
+      );
+      return rows.map(mapDrillRepRow);
     },
   };
 }

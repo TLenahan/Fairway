@@ -1,8 +1,13 @@
+import { classifyRep, computeDrillPlan, swingMetrics } from '@golf/drill';
 import {
   ActiveSessionSlice,
   Club,
   ConnectionSlice,
   DataStore,
+  DrillRep,
+  DrillRung,
+  DrillSlice,
+  DrillState,
   Environment,
   FlightModel,
   LaunchConditions,
@@ -12,6 +17,7 @@ import {
   ShotRecord,
   WristService,
   WristShot,
+  WristSlice,
 } from '@golf/types';
 import { createStore } from 'zustand/vanilla';
 
@@ -21,7 +27,11 @@ import { createStore } from 'zustand/vanilla';
 const JOIN_WINDOW_MS = 1500;
 const PRUNE_MS = 5000;
 
-export type FairwayState = ConnectionSlice & LiveSlice & ActiveSessionSlice;
+export type FairwayState = ConnectionSlice &
+  LiveSlice &
+  ActiveSessionSlice &
+  WristSlice &
+  DrillSlice;
 
 export interface FairwayStoreDeps {
   monitor: MonitorService;
@@ -103,6 +113,59 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
       await activateClub(club);
       return club;
     },
+
+    /* ── WristSlice ── */
+    wristConnection: wrist?.getState() ?? 'disconnected',
+    wristDevice: null,
+    wristBatteryPercent: null,
+    startWristScan() {
+      wrist?.startScan();
+    },
+    stopWristScan() {
+      wrist?.stopScan();
+    },
+    async connectWrist(deviceId: string) {
+      if (!wrist) throw new Error('No wrist sensor configured');
+      await wrist.connect(deviceId);
+    },
+    disconnectWrist() {
+      wrist?.disconnect();
+    },
+
+    /* ── DrillSlice ── */
+    drill: null,
+    async startDrill(wedgeClubIds: string[]) {
+      const clubs = await data.listClubs({ includeArchived: true });
+      const wedges = wedgeClubIds.map((id) => {
+        const club = clubs.find((c) => c.id === id);
+        if (!club) throw new Error(`Unknown club: ${id}`);
+        return club;
+      });
+      drillWedges = wedges;
+      drillReps = await data.listDrillReps(wedgeClubIds);
+      set({
+        drill: {
+          plan: computeDrillPlan(wedges, drillReps),
+          active: null,
+          lastRep: null,
+        },
+      });
+    },
+    endDrill() {
+      drillWedges = [];
+      drillReps = [];
+      repBySwing.clear();
+      set({ drill: null });
+    },
+    async selectDrillRung(clubId: string, rung: DrillRung) {
+      if (!get().drill) return;
+      // Re-tags subsequent shots. Wedges are all sensor-mode 'iron', so the
+      // underlying selectClub costs no device round-trip between rungs.
+      await get().selectClub(clubId);
+      const drill = get().drill;
+      if (!drill) return;
+      set({ drill: { ...drill, active: { clubId, rung } } });
+    },
   }));
 
   /** re-tag is free; only a sensor-mode change costs a device round-trip */
@@ -145,6 +208,13 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
   const pendingSwings: { swing: WristShot; at: number }[] = [];
   const pendingShots: { record: ShotRecord; at: number }[] = [];
 
+  // Drill-mode closure state. drillReps mirrors the persisted rows for the
+  // drill's wedges (SQLite stays the source of truth); repBySwing lets the
+  // wrist↔shot join late-attach a carry to the rep created for that swing.
+  let drillWedges: Club[] = [];
+  let drillReps: DrillRep[] = [];
+  const repBySwing = new Map<WristShot, string>();
+
   function nearestWithin(times: { at: number }[], target: number): number {
     let best = -1;
     let bestDelta = JOIN_WINDOW_MS;
@@ -167,13 +237,34 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     }
   }
 
-  async function attachWrist(record: ShotRecord, swing: WristShot): Promise<void> {
+  async function attachWrist(
+    record: ShotRecord,
+    swing: WristShot,
+  ): Promise<void> {
     await data.attachWrist(record.id, swing);
     set({
       sessionShots: get().sessionShots.map((s) =>
         s.id === record.id ? { ...s, wrist: swing } : s,
       ),
     });
+
+    const repId = repBySwing.get(swing);
+    if (!repId) return;
+    repBySwing.delete(swing);
+    // No flight ⇒ no carry to learn from (putter guard; wedges always fly).
+    if (!record.flight) return;
+    await data.setDrillRepCarry(repId, record.id, record.flight.carryM);
+    const rep = drillReps.find((r) => r.id === repId);
+    if (rep) {
+      rep.shotId = record.id;
+      rep.carryM = record.flight.carryM;
+    }
+    const drill = get().drill;
+    if (drill) {
+      set({
+        drill: { ...drill, plan: computeDrillPlan(drillWedges, drillReps) },
+      });
+    }
   }
 
   async function handleShot(measured: MeasuredShot): Promise<void> {
@@ -210,7 +301,66 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     }
   }
 
+  /** Judge a swing against the active rung, persist it as a DrillRep, and
+      publish the recomputed plan + lastRep feedback. Runs BEFORE the
+      wrist↔shot join so the rep is in repBySwing by the time attachWrist
+      fires for a shot that arrived first. */
+  async function recordDrillRep(
+    drill: DrillState,
+    active: { clubId: string; rung: DrillRung },
+    swing: WristShot,
+  ): Promise<void> {
+    const metrics = swingMetrics(swing);
+    const rungPlan = drill.plan.wedges
+      .find((w) => w.club.id === active.clubId)
+      ?.rungs.find((r) => r.rung === active.rung);
+    const targetAngleDeg = rungPlan?.targetAngleDeg ?? null;
+    const outcome = classifyRep(
+      metrics.topAngleDeg,
+      targetAngleDeg,
+      rungPlan?.toleranceDeg ?? 0,
+    );
+    const rep = await data.insertDrillRep({
+      clubId: active.clubId,
+      rung: active.rung,
+      shotId: null,
+      tMs: swing.tImpactMs,
+      topAngleDeg: metrics.topAngleDeg,
+      topExtensionDeg: metrics.topExtensionDeg,
+      backswingMs: metrics.backswingMs,
+      downswingMs: metrics.downswingMs,
+      targetAngleDeg,
+      outcome,
+      carryM: null,
+    });
+    drillReps.push(rep);
+    repBySwing.set(swing, rep.id);
+    set({
+      drill: {
+        plan: computeDrillPlan(drillWedges, drillReps),
+        active,
+        lastRep: {
+          repId: rep.id,
+          clubId: active.clubId,
+          rung: active.rung,
+          outcome,
+          topAngleDeg: metrics.topAngleDeg,
+          targetAngleDeg,
+          deltaDeg:
+            targetAngleDeg === null
+              ? null
+              : metrics.topAngleDeg - targetAngleDeg,
+          at: Date.now(),
+        },
+      },
+    });
+  }
+
   async function handleSwing(swing: WristShot): Promise<void> {
+    const drill = get().drill;
+    if (drill?.active) {
+      await recordDrillRep(drill, drill.active, swing);
+    }
     prune(swing.tImpactMs);
     const idx = nearestWithin(pendingShots, swing.tImpactMs);
     if (idx >= 0) {
@@ -229,6 +379,9 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
   monitor.on('shot', (measured) => {
     void handleShot(measured).catch((err: Error) => onError(err));
   });
+  wrist?.on('connection', (wristConnection) => set({ wristConnection }));
+  wrist?.on('device', (wristDevice) => set({ wristDevice }));
+  wrist?.on('battery', (wristBatteryPercent) => set({ wristBatteryPercent }));
   wrist?.on('swing', (swing) => {
     void handleSwing(swing).catch((err: Error) => onError(err));
   });

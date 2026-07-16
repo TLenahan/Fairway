@@ -31,9 +31,18 @@ export default [
             { sourceTag: 'type:app', onlyDependOnLibsWithTags: ['*'] },
             {
               sourceTag: 'lib:store',
-              onlyDependOnLibsWithTags: ['lib:types', 'lib:monitor', 'lib:data'],
+              onlyDependOnLibsWithTags: [
+                'lib:types',
+                'lib:monitor',
+                'lib:data',
+                'lib:drill',
+              ],
             },
             { sourceTag: 'lib:wrist', onlyDependOnLibsWithTags: ['lib:types'] },
+            {
+              sourceTag: 'lib:drill',
+              onlyDependOnLibsWithTags: ['lib:types', 'lib:analytics'],
+            },
             {
               sourceTag: 'lib:analysis',
               onlyDependOnLibsWithTags: ['lib:types', 'lib:analytics'],

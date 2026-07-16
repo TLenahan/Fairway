@@ -28,7 +28,7 @@ export function PracticeDrawer({ open, onClose }: PracticeDrawerProps) {
   const endSession = useFairwayStore((s) => s.endSession);
   const environment = useSettings((s) => s.environment);
 
-  const go = (href: '/connect' | '/sessions' | '/settings') => {
+  const go = (href: '/connect' | '/drill' | '/sessions' | '/settings') => {
     onClose();
     router.push(href);
   };
@@ -129,6 +129,11 @@ export function PracticeDrawer({ open, onClose }: PracticeDrawerProps) {
             <ClubPicker />
 
             <SectionTitle title="More" />
+            <Pressable onPress={() => go('/drill')} style={tw`py-2.5`}>
+              <Text style={tw`text-base font-medium text-green-700`}>
+                Wedge drill
+              </Text>
+            </Pressable>
             <Pressable onPress={() => go('/sessions')} style={tw`py-2.5`}>
               <Text style={tw`text-base font-medium text-green-700`}>
                 Session history

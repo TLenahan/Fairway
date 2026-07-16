@@ -132,6 +132,34 @@ export const MIGRATIONS: Migration[] = [
       await db.execAsync('ALTER TABLE shots ADD COLUMN wrist_json TEXT');
     },
   },
+  {
+    version: 5,
+    async up(db) {
+      // Wedge drill reps — the drill's ONLY persisted state. Targets, anchors
+      // and the carry ladder are always recomputed from reps by @golf/drill,
+      // never stored. shot_id/carry_m stay NULL until the Mini shot joins
+      // (~1 s after the wrist swing); a rep that never joins is a ball-less
+      // rehearsal swing.
+      await db.execAsync(`
+        CREATE TABLE drill_reps (
+          id TEXT PRIMARY KEY,
+          club_id TEXT NOT NULL REFERENCES clubs(id),
+          rung TEXT NOT NULL CHECK (rung IN ('low','mid','full')),
+          shot_id TEXT REFERENCES shots(id),
+          t_ms INTEGER NOT NULL,
+          top_angle_deg REAL NOT NULL,
+          top_extension_deg REAL,
+          backswing_ms REAL NOT NULL,
+          downswing_ms REAL NOT NULL,
+          target_angle_deg REAL,
+          outcome TEXT NOT NULL CHECK (outcome IN ('match','over','under','calibrating')),
+          carry_m REAL,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX idx_drill_reps_club ON drill_reps(club_id);
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {

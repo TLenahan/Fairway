@@ -3,6 +3,8 @@ import {
   AnalysisRecordSchema,
   Club,
   ClubSchema,
+  DrillRep,
+  DrillRepSchema,
   Session,
   SessionSchema,
   ShotRecord,
@@ -218,5 +220,39 @@ export function mapAnalysisRow(row: AnalysisRow): AnalysisRecord {
     verdict: JSON.parse(row.verdict_json) as unknown,
     narrative: row.narrative,
     inputSummary: JSON.parse(row.input_summary_json) as unknown,
+  });
+}
+
+export interface DrillRepRow {
+  id: string;
+  club_id: string;
+  rung: string;
+  shot_id: string | null;
+  t_ms: number;
+  top_angle_deg: number;
+  top_extension_deg: number | null;
+  backswing_ms: number;
+  downswing_ms: number;
+  target_angle_deg: number | null;
+  outcome: string;
+  carry_m: number | null;
+  created_at: number;
+}
+
+export function mapDrillRepRow(row: DrillRepRow): DrillRep {
+  return DrillRepSchema.parse({
+    id: row.id,
+    clubId: row.club_id,
+    rung: row.rung,
+    shotId: row.shot_id,
+    tMs: row.t_ms,
+    topAngleDeg: row.top_angle_deg,
+    topExtensionDeg: row.top_extension_deg,
+    backswingMs: row.backswing_ms,
+    downswingMs: row.downswing_ms,
+    targetAngleDeg: row.target_angle_deg,
+    outcome: row.outcome,
+    carryM: row.carry_m,
+    createdAt: row.created_at,
   });
 }

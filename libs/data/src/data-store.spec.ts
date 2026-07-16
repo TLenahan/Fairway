@@ -1,4 +1,4 @@
-import { FlightResult, MeasuredShot, WristShot } from '@golf/types';
+import { DrillRep, FlightResult, MeasuredShot, WristShot } from '@golf/types';
 
 import { createDataStore, DuplicateShotError } from './data-store';
 import { runMigrations } from './migrations';
@@ -94,6 +94,24 @@ const wristFixture: WristShot = {
   },
   shock: { tMs: 1783975921445, offsetFromImpactMs: 0, peakAbsLsb: 5123 },
 };
+
+const drillRepInput = (
+  clubId: string,
+  overrides: Partial<Omit<DrillRep, 'id' | 'createdAt'>> = {},
+): Omit<DrillRep, 'id' | 'createdAt'> => ({
+  clubId,
+  rung: 'full',
+  shotId: null,
+  tMs: 1783975921445,
+  topAngleDeg: 61.4,
+  topExtensionDeg: null,
+  backswingMs: 742,
+  downswingMs: 251,
+  targetAngleDeg: null,
+  outcome: 'calibrating',
+  carryM: null,
+  ...overrides,
+});
 
 async function build() {
   const db = openTestDatabase();
@@ -343,5 +361,107 @@ describe('createDataStore', () => {
     const clubs = await store.listClubs({ includeArchived: true });
     expect(clubs).toHaveLength(DEFAULT_CLUBS.length);
     expect(clubs.find((c) => c.name === 'Putter')?.sensorMode).toBe('putter');
+  });
+
+  it('round-trips drill reps — every field preserved, nulls stay null', async () => {
+    const { store } = await build();
+    const wedge = await store.createClub({
+      name: '56°',
+      category: 'wedge',
+      swingTag: 'full',
+      loftDeg: 56,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    });
+
+    const calibrating = await store.insertDrillRep(drillRepInput(wedge.id));
+    const judged = await store.insertDrillRep(
+      drillRepInput(wedge.id, {
+        rung: 'mid',
+        topAngleDeg: 44.2,
+        topExtensionDeg: 18.7,
+        targetAngleDeg: 45.0,
+        outcome: 'match',
+      }),
+    );
+
+    const reps = await store.listDrillReps([wedge.id]);
+    expect(reps).toEqual([calibrating, judged]);
+    expect(reps[0].shotId).toBeNull();
+    expect(reps[0].topExtensionDeg).toBeNull();
+    expect(reps[0].targetAngleDeg).toBeNull();
+    expect(reps[0].carryM).toBeNull();
+    expect(reps[1].topExtensionDeg).toBeCloseTo(18.7);
+    expect(reps[1].targetAngleDeg).toBeCloseTo(45.0);
+    expect(reps[1].outcome).toBe('match');
+  });
+
+  it('setDrillRepCarry attaches the joined shot and carry', async () => {
+    const { store } = await build();
+    const wedge = await store.createClub({
+      name: '56°',
+      category: 'wedge',
+      swingTag: 'full',
+      loftDeg: 56,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    });
+    const session = await store.createSession({
+      name: null,
+      notes: null,
+      startedAt: 1,
+      environment: env,
+    });
+    const shot = await store.insertShot(
+      session.id,
+      wedge.id,
+      measured('g-1'),
+      flight,
+    );
+    const rep = await store.insertDrillRep(drillRepInput(wedge.id));
+
+    await store.setDrillRepCarry(rep.id, shot.id, 132.4);
+    const [read] = await store.listDrillReps([wedge.id]);
+    expect(read.shotId).toBe(shot.id);
+    expect(read.carryM).toBeCloseTo(132.4);
+  });
+
+  it('listDrillReps filters by club ids and orders by createdAt', async () => {
+    const { store } = await build();
+    const clubInput = {
+      swingTag: 'full' as const,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    };
+    const pw = await store.createClub({
+      ...clubInput,
+      name: 'PW',
+      category: 'wedge',
+      loftDeg: 46,
+    });
+    const lw = await store.createClub({
+      ...clubInput,
+      name: '60°',
+      category: 'wedge',
+      loftDeg: 60,
+    });
+
+    const first = await store.insertDrillRep(drillRepInput(pw.id));
+    const second = await store.insertDrillRep(drillRepInput(lw.id));
+    const third = await store.insertDrillRep(drillRepInput(pw.id));
+
+    expect(await store.listDrillReps([])).toEqual([]);
+    expect(await store.listDrillReps([pw.id])).toEqual([first, third]);
+    expect(await store.listDrillReps([pw.id, lw.id])).toEqual([
+      first,
+      second,
+      third,
+    ]);
   });
 });
