@@ -5,12 +5,15 @@ import {
 } from '@golf/types';
 import { Button, Card, SectionTitle, tw } from '@golf/ui';
 import { useRouter } from 'expo-router';
+import * as Sharing from 'expo-sharing';
 import { useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { z } from 'zod';
 
 import { ConnectionDot } from '@/components/ConnectionDot';
+import { buildStamp } from '@/lib/build-info';
 import { useFairwayStore, useServices, useSettings } from '@/services/context';
+import { CaptureStatus } from '@/services/wrist-capture';
 
 type WristConnection = z.infer<typeof WristConnectionState>;
 
@@ -28,7 +31,7 @@ const wristDotByState: Record<WristConnection, string> = {
 
 export default function ConnectScreen() {
   const router = useRouter();
-  const { monitor, wrist, settings } = useServices();
+  const { monitor, wrist, settings, wristCapture } = useServices();
   const connection = useFairwayStore((s) => s.connection);
   const connect = useFairwayStore((s) => s.connect);
   const wristConnection = useFairwayStore((s) => s.wristConnection);
@@ -47,6 +50,10 @@ export default function ConnectScreen() {
   const [wristDevices, setWristDevices] = useState<WristDevice[]>([]);
   const [wristError, setWristError] = useState<string | null>(null);
   const [wristBusy, setWristBusy] = useState(false);
+  const [capture, setCapture] = useState<CaptureStatus>(wristCapture.status);
+  const [lastCapture, setLastCapture] = useState<string | null>(null);
+
+  useEffect(() => wristCapture.subscribe(setCapture), [wristCapture]);
 
   useEffect(() => {
     const onDevice = (device: DiscoveredDevice) =>
@@ -105,12 +112,42 @@ export default function ConnectScreen() {
     }
   };
 
+  const toggleCapture = (): void => {
+    setWristError(null);
+    try {
+      if (capture.recording) {
+        const done = wristCapture.stop();
+        setLastCapture(done.file);
+      } else {
+        wristCapture.start('session');
+        setLastCapture(null);
+      }
+    } catch (err) {
+      setWristError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // expo-sharing, not RN's Share — Share.share({url}) is iOS-only and
+  // silently drops the file on Android (found the hard way).
+  const shareCapture = async (uri: string) => {
+    try {
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/x-ndjson',
+        dialogTitle: 'Share wrist capture',
+      });
+    } catch (err) {
+      setWristError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <ScrollView
       style={tw`flex-1 bg-ivory`}
       contentContainerStyle={tw`p-4 pb-8`}
     >
       <ConnectionDot state={connection} />
+
+      <Text style={tw`mt-1 text-xs text-silver`}>{buildStamp()}</Text>
 
       {connection === 'localNetworkDenied' && (
         <Card style={tw`mt-3 border-danger`}>
@@ -194,12 +231,20 @@ export default function ConnectScreen() {
           )}
         </View>
         {wristConnection === 'connected' && (
-          <Button
-            label="Disconnect"
-            variant="ghost"
-            compact
-            onPress={disconnectWrist}
-          />
+          <View style={tw`flex-row gap-2`}>
+            <Button
+              label="Calibrate"
+              variant="secondary"
+              compact
+              onPress={() => router.push('/calibrate')}
+            />
+            <Button
+              label="Disconnect"
+              variant="ghost"
+              compact
+              onPress={disconnectWrist}
+            />
+          </View>
         )}
       </View>
       {(wristConnection === 'unauthorized' ||
@@ -242,6 +287,41 @@ export default function ConnectScreen() {
           ))}
         </View>
       )}
+      {wristConnection === 'connected' && (
+        <Card style={tw`mt-2`}>
+          <View style={tw`flex-row items-center justify-between`}>
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`font-semibold text-ink`}>Raw capture</Text>
+              <Text style={tw`mt-0.5 text-xs text-silver`}>
+                {capture.recording
+                  ? `Recording — ${capture.frames} frames · ${(
+                      capture.bytes / 1024
+                    ).toFixed(0)} KB`
+                  : 'Records every sensor frame for tuning swing detection.'}
+              </Text>
+            </View>
+            <Button
+              label={capture.recording ? 'Stop' : 'Record'}
+              variant={capture.recording ? 'danger' : 'ghost'}
+              compact
+              onPress={toggleCapture}
+            />
+          </View>
+          {lastCapture !== null && (
+            <View style={tw`mt-3 flex-row items-center justify-between`}>
+              <Text style={tw`flex-1 pr-3 text-xs text-silver`}>
+                Saved {lastCapture.split('/').pop()}
+              </Text>
+              <Button
+                label="Share"
+                compact
+                onPress={() => void shareCapture(lastCapture)}
+              />
+            </View>
+          )}
+        </Card>
+      )}
+
       {wristError && (
         <Text style={tw`mt-3 text-sm text-danger`}>{wristError}</Text>
       )}

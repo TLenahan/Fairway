@@ -65,6 +65,11 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
   const { monitor, wrist, data, flightModel, getDefaultEnvironment, onError } =
     deps;
 
+  // Distinguishes a user-initiated wrist disconnect from an unexpected drop, so
+  // only real deaths raise the toast. Shared by disconnectWrist and the wrist
+  // connection handler below (same closure).
+  let wristUserDisconnecting = false;
+
   const store = createStore<FairwayState>()((set, get) => ({
     /* ── ConnectionSlice ── */
     connection: 'disconnected',
@@ -118,6 +123,8 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     wristConnection: wrist?.getState() ?? 'disconnected',
     wristDevice: null,
     wristBatteryPercent: null,
+    wristHold: null,
+    wristAlert: null,
     startWristScan() {
       wrist?.startScan();
     },
@@ -129,7 +136,11 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
       await wrist.connect(deviceId);
     },
     disconnectWrist() {
+      wristUserDisconnecting = true;
       wrist?.disconnect();
+    },
+    dismissWristAlert() {
+      set({ wristAlert: null });
     },
 
     /* ── DrillSlice ── */
@@ -379,9 +390,32 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
   monitor.on('shot', (measured) => {
     void handleShot(measured).catch((err: Error) => onError(err));
   });
-  wrist?.on('connection', (wristConnection) => set({ wristConnection }));
+  wrist?.on('connection', (wristConnection) => {
+    const wasConnected = get().wristConnection === 'connected';
+    const dropped =
+      wristConnection === 'disconnected' ||
+      wristConnection === 'error' ||
+      wristConnection === 'poweredOff';
+    // A drop from a live connection that the user didn't ask for is a death.
+    const died = wasConnected && dropped && !wristUserDisconnecting;
+    if (wristConnection === 'connected' || wristConnection === 'disconnected') {
+      wristUserDisconnecting = false;
+    }
+    set(
+      wristConnection === 'connected'
+        ? { wristConnection, wristAlert: null }
+        : {
+            wristConnection,
+            wristHold: null,
+            wristAlert: died
+              ? 'HackMotion disconnected — wrist data paused. Reconnect to resume.'
+              : get().wristAlert,
+          },
+    );
+  });
   wrist?.on('device', (wristDevice) => set({ wristDevice }));
   wrist?.on('battery', (wristBatteryPercent) => set({ wristBatteryPercent }));
+  wrist?.on('hold', (wristHold) => set({ wristHold }));
   wrist?.on('swing', (swing) => {
     void handleSwing(swing).catch((err: Error) => onError(err));
   });

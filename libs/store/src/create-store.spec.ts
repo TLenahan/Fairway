@@ -232,6 +232,8 @@ class FakeWrist implements WristService {
   stopScan(): void {}
   async connect(): Promise<void> {}
   disconnect(): void {}
+  setCalibration(): void {}
+  setEmitSamples(): void {}
   getState(): 'disconnected' {
     return 'disconnected';
   }
@@ -251,21 +253,27 @@ class FakeWrist implements WristService {
 
 const swingAt = (
   tImpactMs: number,
-  topRotVecDeg: [number, number, number] = [1, 2, 3],
+  topFromAddressDeg: [number, number, number] = [1, 2, 3],
 ): WristShot => {
   const kf = {
     tMs: tImpactMs,
+    tDevS: tImpactMs / 1000,
     angularSpeedDegS: 100,
     angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
     rotVecDeg: [1, 2, 3] as [number, number, number],
+    rotVecFromAddressDeg: [0, 0, 0] as [number, number, number],
   };
   return {
     tImpactMs,
-    durationMs: 700,
+    durationMs: 1300,
     peakAngularSpeedDegS: 480,
     calibrated: false,
+    addressHeldMs: 1800,
+    backswingMs: 700,
+    topPauseMs: 0,
+    downswingMs: 250,
     address: kf,
-    top: { ...kf, rotVecDeg: topRotVecDeg },
+    top: { ...kf, rotVecFromAddressDeg: topFromAddressDeg },
     impact: kf,
     shock: { tMs: tImpactMs, offsetFromImpactMs: 0, peakAbsLsb: 4000 },
   };
@@ -521,6 +529,52 @@ describe('createFairwayStore — wrist slice', () => {
     expect(state.wristConnection).toBe('connected');
     expect(state.wristDevice?.id).toBe('hm-1');
     expect(state.wristBatteryPercent).toBe(85);
+  });
+
+  it('mirrors hold progress and clears it when the sensor drops', () => {
+    const wrist = new FakeWrist();
+    const { store } = build({ wrist });
+    wrist.emit('connection', 'connected');
+    wrist.emit('hold', { tMs: 1000, heldMs: 900, requiredMs: 1500, armed: false });
+    expect(store.getState().wristHold?.heldMs).toBe(900);
+    wrist.emit('hold', { tMs: 1700, heldMs: 1600, requiredMs: 1500, armed: true });
+    expect(store.getState().wristHold?.armed).toBe(true);
+    wrist.emit('connection', 'disconnected');
+    expect(store.getState().wristHold).toBeNull();
+  });
+
+  it('raises a dismissable alert when the wrist drops unexpectedly', () => {
+    const wrist = new FakeWrist();
+    const { store } = build({ wrist });
+    wrist.emit('connection', 'connected');
+    expect(store.getState().wristAlert).toBeNull();
+
+    // BLE/battery death: connected → disconnected with no user action
+    wrist.emit('connection', 'disconnected');
+    expect(store.getState().wristAlert).toContain('HackMotion disconnected');
+    expect(store.getState().wristHold).toBeNull();
+
+    store.getState().dismissWristAlert();
+    expect(store.getState().wristAlert).toBeNull();
+  });
+
+  it('does not alert on a user-initiated wrist disconnect', () => {
+    const wrist = new FakeWrist();
+    const { store } = build({ wrist });
+    wrist.emit('connection', 'connected');
+    store.getState().disconnectWrist(); // FakeWrist.disconnect is a no-op…
+    wrist.emit('connection', 'disconnected'); // …so emit the drop it would cause
+    expect(store.getState().wristAlert).toBeNull();
+  });
+
+  it('clears the alert when the wrist reconnects', () => {
+    const wrist = new FakeWrist();
+    const { store } = build({ wrist });
+    wrist.emit('connection', 'connected');
+    wrist.emit('connection', 'error');
+    expect(store.getState().wristAlert).not.toBeNull();
+    wrist.emit('connection', 'connected');
+    expect(store.getState().wristAlert).toBeNull();
   });
 
   it('rejects connectWrist when no wrist service is configured', async () => {

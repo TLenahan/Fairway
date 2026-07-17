@@ -2,27 +2,26 @@ import { WristShot } from '@golf/types';
 
 /** What the drill measures on every wrist swing event. */
 export interface SwingMetrics {
-  topAngleDeg: number; // Euclidean magnitude of top.rotVecDeg
+  topAngleDeg: number; // |top.rotVecFromAddressDeg| — wrist change from setup
   topExtensionDeg: number | null; // top.angles.extensionDeg (null uncalibrated)
-  backswingMs: number; // top.tMs − address.tMs, clamped ≥ 0
-  downswingMs: number; // impact.tMs − top.tMs, clamped ≥ 0
+  backswingMs: number; // device-clock, takeaway → top
+  downswingMs: number; // device-clock, top → impact zone
 }
 
 /**
- * Per-swing drill metrics from a wrist swing event. `topAngleDeg` is the
- * rotation-vector magnitude of the top keyframe: how far the lead wrist has
- * rotated away from address at the top, which tracks backswing length even
- * UNCALIBRATED — the raw vector is inter-IMU-relative, but its magnitude
- * still grows with swing size (see libs/types/src/wrist.ts). Anatomical
- * extension rides along only once calibration has defined it. Tempo phases
- * are clamped at 0 so a mis-ordered keyframe can't yield negative durations.
+ * Per-swing drill metrics from a wrist swing event. `topAngleDeg` is how far
+ * the wrist rotated away from THIS swing's address hold by the top — anchored
+ * to the golfer's own setup, so it is meaningful without any calibration and
+ * immune to strap offset. Anatomical extension rides along only once
+ * calibration has defined it. Tempo comes from the detector's device-clock
+ * phase durations, not BLE arrival time.
  */
 export const swingMetrics = (shot: WristShot): SwingMetrics => {
-  const [x, y, z] = shot.top.rotVecDeg;
+  const [x, y, z] = shot.top.rotVecFromAddressDeg;
   return {
     topAngleDeg: Math.hypot(x, y, z),
     topExtensionDeg: shot.top.angles.extensionDeg,
-    backswingMs: Math.max(0, shot.top.tMs - shot.address.tMs),
-    downswingMs: Math.max(0, shot.impact.tMs - shot.top.tMs),
+    backswingMs: shot.backswingMs,
+    downswingMs: shot.downswingMs,
   };
 };

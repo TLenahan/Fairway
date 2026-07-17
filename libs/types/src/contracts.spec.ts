@@ -14,26 +14,36 @@ import {
 
 const wristShotFixture: WristShot = {
   tImpactMs: 1783975921445,
-  durationMs: 780,
+  durationMs: 980,
   peakAngularSpeedDegS: 645.2,
   calibrated: false,
+  addressHeldMs: 1850,
+  backswingMs: 705,
+  topPauseMs: 0,
+  downswingMs: 245,
   address: {
     tMs: 1783975920500,
+    tDevS: 120.5,
     angularSpeedDegS: 12,
     angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
     rotVecDeg: [16.1, -47.8, -4.5],
+    rotVecFromAddressDeg: [0, 0, 0],
   },
   top: {
-    tMs: 1783975921000,
+    tMs: 1783975921205,
+    tDevS: 121.205,
     angularSpeedDegS: 40,
     angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
     rotVecDeg: [14.1, 13.1, -3.0],
+    rotVecFromAddressDeg: [-2.0, 60.9, 1.5],
   },
   impact: {
     tMs: 1783975921445,
+    tDevS: 121.45,
     angularSpeedDegS: 645.2,
     angles: { extensionDeg: null, deviationDeg: null, rotationDeg: null },
     rotVecDeg: [10.6, 40.2, -3.9],
+    rotVecFromAddressDeg: [-5.5, 8.1, 0.6],
   },
   shock: { tMs: 1783975921445, offsetFromImpactMs: 0, peakAbsLsb: 5123 },
 };

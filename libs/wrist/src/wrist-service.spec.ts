@@ -44,15 +44,18 @@ class FakeTransport implements WristBleTransport {
   }
 }
 
-/** Build 0x90 telemetry frames replaying a swing in qB (qA held at identity). */
+/**
+ * Build 0x90 telemetry frames replaying an address-hold swing: 1.8 s still,
+ * cosine backswing to 80°, downswing back to 2°, follow-through to 110°,
+ * settle. qB rotates about z; qA stays identity (records at 100 Hz device
+ * time — tsA steps 640 at 64 kHz).
+ */
 function swingFrames(): Uint8Array[] {
   const frames: Uint8Array[] = [];
-  let cumDeg = 0;
   let tsa = 0;
-  const rec = (deltaDeg: number, dtsa: number, shock: number): Uint8Array => {
-    cumDeg += deltaDeg;
-    tsa = (tsa + dtsa) % 65536;
-    const half = (cumDeg * DEG_TO_RAD) / 2;
+  const rec = (thetaDeg: number, shock: number): Uint8Array => {
+    tsa = (tsa + 640) % 65536;
+    const half = (thetaDeg * DEG_TO_RAD) / 2;
     const q14 = (v: number): number => Math.round(v * 16384);
     const flat = [
       tsa, // ctr
@@ -72,12 +75,13 @@ function swingFrames(): Uint8Array[] {
     });
     return new Uint8Array(buf);
   };
-  for (let i = 0; i < 30; i += 1) frames.push(rec(0, 2560, 5));
-  for (let i = 0; i < 40; i += 1) {
-    const frac = i < 20 ? i / 20 : (40 - i) / 20;
-    frames.push(rec(0.2 + frac * 2.8, 640, 200 + frac * 3000));
-  }
-  for (let i = 0; i < 30; i += 1) frames.push(rec(0, 2560, 5));
+  const ease = (from: number, to: number, i: number, n: number): number =>
+    from + ((to - from) * (1 - Math.cos((Math.PI * i) / n))) / 2;
+  for (let i = 0; i < 180; i += 1) frames.push(rec(0, 5)); // address hold
+  for (let i = 1; i <= 70; i += 1) frames.push(rec(ease(0, 80, i, 70), 200));
+  for (let i = 1; i <= 25; i += 1) frames.push(rec(ease(80, 2, i, 25), 4000));
+  for (let i = 1; i <= 35; i += 1) frames.push(rec(ease(2, 110, i, 35), 800));
+  for (let i = 0; i < 100; i += 1) frames.push(rec(110, 5)); // finish hold
   return frames;
 }
 
@@ -106,7 +110,9 @@ describe('HackMotionWristService', () => {
 
     for (const frame of swingFrames()) transport.conn.feed(frame);
     expect(swings).toHaveLength(1);
-    expect(swings[0].peakAngularSpeedDegS).toBeGreaterThan(200);
+    expect(swings[0].peakAngularSpeedDegS).toBeGreaterThan(300);
+    expect(swings[0].addressHeldMs).toBeGreaterThan(1500);
+    expect(swings[0].downswingMs).toBeLessThan(320);
 
     transport.conn.feed(Uint8Array.of(0x81, 0x46, 0x0e, 0xbd));
     expect(batteries).toEqual([[70, 3773]]);
@@ -117,6 +123,48 @@ describe('HackMotionWristService', () => {
 
     service.disconnect();
     expect(service.getState()).toBe('disconnected');
+  });
+
+  it('taps every raw frame, verbatim and pre-decode', async () => {
+    const transport = new FakeTransport();
+    const raw: Array<{ bytes: Uint8Array; tMs: number }> = [];
+    const service = new HackMotionWristService({
+      transport,
+      batteryPollMs: 1_000_000,
+      // copy: the tap is handed the live buffer, as a real recorder must
+      onRawFrame: (bytes, tMs) => raw.push({ bytes: bytes.slice(), tMs }),
+    });
+    await service.connect('dev-1');
+
+    const frames = swingFrames();
+    for (const frame of frames) transport.conn.feed(frame);
+    const battery = Uint8Array.of(0x81, 0x46, 0x0e, 0xbd);
+    transport.conn.feed(battery);
+
+    // non-telemetry replies are captured too — a replay wants the whole link
+    expect(raw).toHaveLength(frames.length + 1);
+    expect(raw[0].bytes).toEqual(frames[0]);
+    expect(raw[raw.length - 1].bytes).toEqual(battery);
+    expect(raw[0].tMs).toBeGreaterThan(0);
+    service.disconnect();
+  });
+
+  it('keeps streaming when the raw tap throws', async () => {
+    const transport = new FakeTransport();
+    const swings: WristShot[] = [];
+    const service = new HackMotionWristService({
+      transport,
+      batteryPollMs: 1_000_000,
+      onRawFrame: () => {
+        throw new Error('disk full');
+      },
+    });
+    service.on('swing', (s) => swings.push(s));
+    await service.connect('dev-1');
+
+    for (const frame of swingFrames()) transport.conn.feed(frame);
+    expect(swings).toHaveLength(1);
+    service.disconnect();
   });
 
   it('reports poweredOff before scanning when the radio is off', () => {
