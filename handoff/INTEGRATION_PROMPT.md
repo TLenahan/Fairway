@@ -4,7 +4,7 @@ You are a fresh Claude Code session acting as the reviewer/integrator. Two indep
 
 ## The tracks
 
-1. **Flight calibration** — branch `claude/flight-calibration`, worktree `.claude/worktrees/flight-calibration`. Spec: `handoff/FLIGHT_AGENT_PROMPT.md`. Results: `handoff/FLIGHT_HANDOFF.md`.
+1. **Flight calibration** — branch `claude/flight-model-aero-calibration-fb0700`, worktree `.claude/worktrees/android-device-run-command-12d5a0` (the worktree name is unrelated to the work — go by the branch). Spec: `handoff/FLIGHT_AGENT_PROMPT.md`. Results: `handoff/FLIGHT_HANDOFF.md` lives ON that branch, not on main or the detector branch — read it there (`git show claude/flight-model-aero-calibration-fb0700:handoff/FLIGHT_HANDOFF.md` or from inside that worktree).
 2. **Shot detection** — branch `claude/hackmotion-shot-detection-901256`, worktree `.claude/worktrees/hackmotion-shot-detection-901256`. Spec: `handoff/DETECTOR_AGENT_PROMPT.md`. Results: `handoff/DETECTOR_HANDOFF.md`.
 
 ## Review procedure (per track)
