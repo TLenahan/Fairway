@@ -6,18 +6,31 @@ import {
 } from '@golf/types';
 
 import { airDensityKgM3 } from './air';
+import type { AeroCoefficients } from './coefficients';
 import { integrateFlight } from './integrator';
 import { degToRad, radToDeg, vec3 } from './math';
 import { rolloutM } from './rollout';
+import type { RolloutParams } from './rollout';
 import { initialSpinRadS, spinAtTime, RPM_TO_RAD_PER_S } from './spin';
+
+/** Calibration-only knobs; production callers never pass them. */
+export interface SimulationOverrides {
+  aero?: AeroCoefficients;
+  spinDecayTauS?: number;
+  rollout?: RolloutParams;
+  timeStepS?: number;
+}
 
 /**
  * The one flight engine every view builds on (BUILD_SPEC §10.1). Pure and
  * deterministic; every output is COMPUTED (never confuse with sensor data).
+ * `overrides` exists for the aero-calibration harness only — it replays truth
+ * datasets against candidate coefficients without touching the fitted defaults.
  */
 export const simulate = (
   launch: LaunchConditions,
   env: Environment,
+  overrides?: SimulationOverrides,
 ): FlightResult => {
   const vlaRad = degToRad(launch.launchAngleDeg);
   const hlaRad = degToRad(launch.launchDirectionDeg);
@@ -32,6 +45,9 @@ export const simulate = (
     ),
     initialSpinRadS: spin0,
     airDensityKgM3: airDensityKgM3(env.altitudeM, env.temperatureC),
+    aero: overrides?.aero,
+    spinDecayTauS: overrides?.spinDecayTauS,
+    timeStepS: overrides?.timeStepS,
   });
 
   const { landing } = integration;
@@ -42,7 +58,7 @@ export const simulate = (
   const descentDeg = radToDeg(
     Math.atan2(-landing.velocityMs.y, horizontalSpeed),
   );
-  const spinAtLanding = spinAtTime(spin0, landing.tS);
+  const spinAtLanding = spinAtTime(spin0, landing.tS, overrides?.spinDecayTauS);
   const landingSpinRpm =
     Math.hypot(spinAtLanding.x, spinAtLanding.y, spinAtLanding.z) /
     RPM_TO_RAD_PER_S;
@@ -51,7 +67,13 @@ export const simulate = (
   // what golfers and launch monitors mean by carry), NOT the target-line
   // projection. offlineM/landing keep the target-line frame for the views.
   const carry = Math.hypot(landing.x, landing.z);
-  const rollout = rolloutM(horizontalSpeed, descentDeg, landingSpinRpm, carry);
+  const rollout = rolloutM(
+    horizontalSpeed,
+    descentDeg,
+    landingSpinRpm,
+    carry,
+    overrides?.rollout,
+  );
 
   return {
     path: integration.path,

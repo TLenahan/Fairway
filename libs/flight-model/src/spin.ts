@@ -7,10 +7,17 @@ export const RPM_TO_RAD_PER_S = (2 * Math.PI) / 60;
 
 /**
  * Spin decay time constant τ (FLIGHT_MODEL.md §5). Exponential decay
- * ω(t) = ω0·e^(−t/τ) with τ = 20 s — the common approximation to the
- * air-resistance spin-down torque; spec allows τ ∈ ~15–25 s.
+ * ω(t) = ω0·e^(−t/τ), τ = 25 s from the 2026-07-17 aero calibration
+ * (upper edge of the spec's ~15–25 s band; the TrackMan truth data prefers
+ * slow decay and the fit is insensitive across τ ∈ 20–30 s).
+ *
+ * Measured decay is actually speed-dependent — Smits & Smith 1994 give
+ * dω/dt ∝ −ω·V, i.e. τ = R/(2.0e−5·V) ≈ 24 s at driver mid-flight speeds and
+ * 30–50 s for wedge flight — so a constant τ = 25 s is the closest single-value
+ * stand-in across clubs. Upgrading to the ω·V law would require integrating
+ * spin as state (see FLIGHT_HANDOFF.md open questions).
  */
-export const SPIN_DECAY_TAU_S = 20;
+export const SPIN_DECAY_TAU_S = 25;
 
 /**
  * Initial spin vector ω0 (rad/s) in the flight frame (FLIGHT_MODEL.md §1/§6):
@@ -56,5 +63,8 @@ export const initialSpinRadS = (launch: LaunchConditions): Vec3 => {
 };
 
 /** ω(t) = ω0 · e^(−t/τ) — direction fixed, magnitude decays (FLIGHT_MODEL.md §5). */
-export const spinAtTime = (spin0RadS: Vec3, tS: number): Vec3 =>
-  scale(spin0RadS, Math.exp(-tS / SPIN_DECAY_TAU_S));
+export const spinAtTime = (
+  spin0RadS: Vec3,
+  tS: number,
+  tauS: number = SPIN_DECAY_TAU_S,
+): Vec3 => scale(spin0RadS, Math.exp(-tS / tauS));

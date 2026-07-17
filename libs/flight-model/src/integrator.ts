@@ -1,6 +1,12 @@
 import type { FlightPathPoint } from '@golf/types';
 
-import { dragCoefficient, liftCoefficient, spinRatio } from './coefficients';
+import {
+  DEFAULT_AERO,
+  dragCoefficient,
+  liftCoefficient,
+  spinRatio,
+} from './coefficients';
+import type { AeroCoefficients } from './coefficients';
 import {
   BALL_CROSS_SECTION_M2,
   BALL_MASS_KG,
@@ -9,7 +15,7 @@ import {
 } from './constants';
 import { addScaled, cross, magnitude, vec3 } from './math';
 import type { Vec3 } from './math';
-import { spinAtTime } from './spin';
+import { SPIN_DECAY_TAU_S, spinAtTime } from './spin';
 
 /** Fixed RK4 step (FLIGHT_MODEL.md §6): 1 ms. */
 export const TIME_STEP_S = 0.001;
@@ -24,6 +30,11 @@ export interface FlightIntegrationInput {
   initialVelocityMs: Vec3;
   initialSpinRadS: Vec3;
   airDensityKgM3: number;
+  /** Calibration overrides; production callers omit them (fitted defaults). */
+  aero?: AeroCoefficients;
+  spinDecayTauS?: number;
+  /** Calibration-search speedup only; accuracy vs 1 ms verified in the harness. */
+  timeStepS?: number;
 }
 
 export interface LandingState {
@@ -63,6 +74,8 @@ export const integrateFlight = (
   input: FlightIntegrationInput,
 ): FlightIntegration => {
   const { initialSpinRadS, airDensityKgM3 } = input;
+  const aero = input.aero ?? DEFAULT_AERO;
+  const tauS = input.spinDecayTauS ?? SPIN_DECAY_TAU_S;
   const forceScale =
     (0.5 * airDensityKgM3 * BALL_CROSS_SECTION_M2) / BALL_MASS_KG;
 
@@ -71,13 +84,13 @@ export const integrateFlight = (
     let accel = vec3(0, -GRAVITY_MS2, 0);
     if (speed === 0) return accel;
 
-    const spin = spinAtTime(initialSpinRadS, tS);
+    const spin = spinAtTime(initialSpinRadS, tS, tauS);
     const s = spinRatio(BALL_RADIUS_M, magnitude(spin), speed);
 
     accel = addScaled(
       accel,
       velocity,
-      -forceScale * dragCoefficient(s) * speed,
+      -forceScale * dragCoefficient(s, aero) * speed,
     );
 
     const spinCrossV = cross(spin, velocity);
@@ -86,13 +99,13 @@ export const integrateFlight = (
       accel = addScaled(
         accel,
         spinCrossV,
-        (forceScale * liftCoefficient(s) * speed * speed) / spinCrossVMag,
+        (forceScale * liftCoefficient(s, aero) * speed * speed) / spinCrossVMag,
       );
     }
     return accel;
   };
 
-  const dt = TIME_STEP_S;
+  const dt = input.timeStepS ?? TIME_STEP_S;
   const maxSteps = Math.round(MAX_FLIGHT_TIME_S / dt);
   let position = vec3(0, 0, 0);
   let velocity = input.initialVelocityMs;

@@ -1,0 +1,254 @@
+{
+  "source": "TrackMan official Tour Averages (updated May 2, 2024)",
+  "retrieved": "2026-07-17",
+  "provenance": "Read from TrackMan's official PGA/LPGA 'Tour Averages Yards' full-resolution table graphics linked from trackman.media/tour-averages; announced in trackman.com blog 'Introducing updated Tour Averages'. Radar-measured outdoor tournament/testing averages: mixed venues and weather, so treat as sanity anchors (a few percent tolerance), not exact fit targets.",
+  "sources": [
+    "https://www.trackman.com/blog/golf/introducing-updated-tour-averages",
+    "https://www.trackman.media/tour-averages",
+    "https://www.dropbox.com/scl/fi/qkswbi9oz86cjebthx1bx/Tour-average-PGA-yards.jpg?rlkey=a851d8stjd3vgxhuq0oucqne7&st=re0vyby7&dl=1",
+    "https://www.dropbox.com/scl/fi/v4k6v0iln0b0ftoe9k5be/Tour-average-LPGA-yards.jpg?rlkey=dtc5bpvin8pr4u9d88zijyyg5&st=1fqf39gp&dl=1",
+    "https://www.golfmonthly.com/tour/how-far-pga-tour-players-hit-every-club-in-the-bag"
+  ],
+  "units": {
+    "ballSpeedMph": "mph",
+    "launchDeg": "deg",
+    "spinRpm": "rpm",
+    "maxHeightYd": "yd",
+    "landAngleDeg": "deg",
+    "carryYd": "yd"
+  },
+  "pga": [
+    {
+      "club": "Driver",
+      "clubSpeedMph": 115,
+      "ballSpeedMph": 171,
+      "launchDeg": 10.4,
+      "spinRpm": 2545,
+      "maxHeightYd": 35,
+      "landAngleDeg": 39,
+      "carryYd": 282
+    },
+    {
+      "club": "3-wood",
+      "clubSpeedMph": 110,
+      "ballSpeedMph": 162,
+      "launchDeg": 9.3,
+      "spinRpm": 3663,
+      "maxHeightYd": 32,
+      "landAngleDeg": 44,
+      "carryYd": 249
+    },
+    {
+      "club": "5-wood",
+      "clubSpeedMph": 106,
+      "ballSpeedMph": 156,
+      "launchDeg": 9.7,
+      "spinRpm": 4322,
+      "maxHeightYd": 33,
+      "landAngleDeg": 48,
+      "carryYd": 236
+    },
+    {
+      "club": "Hybrid 15-18deg",
+      "clubSpeedMph": 102,
+      "ballSpeedMph": 149,
+      "launchDeg": 10.2,
+      "spinRpm": 4587,
+      "maxHeightYd": 31,
+      "landAngleDeg": 49,
+      "carryYd": 231
+    },
+    {
+      "club": "3-iron",
+      "clubSpeedMph": 100,
+      "ballSpeedMph": 145,
+      "launchDeg": 10.3,
+      "spinRpm": 4404,
+      "maxHeightYd": 30,
+      "landAngleDeg": 48,
+      "carryYd": 218
+    },
+    {
+      "club": "4-iron",
+      "clubSpeedMph": 98,
+      "ballSpeedMph": 140,
+      "launchDeg": 10.8,
+      "spinRpm": 4782,
+      "maxHeightYd": 31,
+      "landAngleDeg": 49,
+      "carryYd": 209
+    },
+    {
+      "club": "5-iron",
+      "clubSpeedMph": 96,
+      "ballSpeedMph": 135,
+      "launchDeg": 11.9,
+      "spinRpm": 5280,
+      "maxHeightYd": 33,
+      "landAngleDeg": 50,
+      "carryYd": 199
+    },
+    {
+      "club": "6-iron",
+      "clubSpeedMph": 94,
+      "ballSpeedMph": 130,
+      "launchDeg": 14,
+      "spinRpm": 6204,
+      "maxHeightYd": 32,
+      "landAngleDeg": 50,
+      "carryYd": 188
+    },
+    {
+      "club": "7-iron",
+      "clubSpeedMph": 92,
+      "ballSpeedMph": 123,
+      "launchDeg": 16.1,
+      "spinRpm": 7124,
+      "maxHeightYd": 34,
+      "landAngleDeg": 51,
+      "carryYd": 176
+    },
+    {
+      "club": "8-iron",
+      "clubSpeedMph": 89,
+      "ballSpeedMph": 118,
+      "launchDeg": 17.8,
+      "spinRpm": 8078,
+      "maxHeightYd": 33,
+      "landAngleDeg": 51,
+      "carryYd": 164
+    },
+    {
+      "club": "9-iron",
+      "clubSpeedMph": 87,
+      "ballSpeedMph": 112,
+      "launchDeg": 20,
+      "spinRpm": 8793,
+      "maxHeightYd": 32,
+      "landAngleDeg": 52,
+      "carryYd": 152
+    },
+    {
+      "club": "PW",
+      "clubSpeedMph": 84,
+      "ballSpeedMph": 104,
+      "launchDeg": 23.7,
+      "spinRpm": 9316,
+      "maxHeightYd": 32,
+      "landAngleDeg": 52,
+      "carryYd": 142
+    }
+  ],
+  "lpga": [
+    {
+      "club": "Driver",
+      "clubSpeedMph": 96,
+      "ballSpeedMph": 143,
+      "launchDeg": 12.6,
+      "spinRpm": 2506,
+      "maxHeightYd": 26,
+      "landAngleDeg": 36,
+      "carryYd": 223
+    },
+    {
+      "club": "3-wood",
+      "clubSpeedMph": 92,
+      "ballSpeedMph": 135,
+      "launchDeg": 11.6,
+      "spinRpm": 2595,
+      "maxHeightYd": 25,
+      "landAngleDeg": 38,
+      "carryYd": 200
+    },
+    {
+      "club": "5-wood",
+      "clubSpeedMph": 90,
+      "ballSpeedMph": 130,
+      "launchDeg": 12.3,
+      "spinRpm": 4320,
+      "maxHeightYd": 25,
+      "landAngleDeg": 43,
+      "carryYd": 189
+    },
+    {
+      "club": "Hybrid 15-18deg",
+      "clubSpeedMph": 87,
+      "ballSpeedMph": 125,
+      "launchDeg": 13.9,
+      "spinRpm": 4504,
+      "maxHeightYd": 25,
+      "landAngleDeg": 45,
+      "carryYd": 178
+    },
+    {
+      "club": "4-iron",
+      "clubSpeedMph": 82,
+      "ballSpeedMph": 118,
+      "launchDeg": 13.9,
+      "spinRpm": 4608,
+      "maxHeightYd": 25,
+      "landAngleDeg": 43,
+      "carryYd": 175
+    },
+    {
+      "club": "5-iron",
+      "clubSpeedMph": 81,
+      "ballSpeedMph": 114,
+      "launchDeg": 14.6,
+      "spinRpm": 4966,
+      "maxHeightYd": 25,
+      "landAngleDeg": 45,
+      "carryYd": 166
+    },
+    {
+      "club": "6-iron",
+      "clubSpeedMph": 80,
+      "ballSpeedMph": 111,
+      "launchDeg": 16.7,
+      "spinRpm": 5904,
+      "maxHeightYd": 25,
+      "landAngleDeg": 46,
+      "carryYd": 155
+    },
+    {
+      "club": "7-iron",
+      "clubSpeedMph": 78,
+      "ballSpeedMph": 106,
+      "launchDeg": 18.5,
+      "spinRpm": 6630,
+      "maxHeightYd": 26,
+      "landAngleDeg": 47,
+      "carryYd": 143
+    },
+    {
+      "club": "8-iron",
+      "clubSpeedMph": 76,
+      "ballSpeedMph": 102,
+      "launchDeg": 20.8,
+      "spinRpm": 7413,
+      "maxHeightYd": 27,
+      "landAngleDeg": 47,
+      "carryYd": 133
+    },
+    {
+      "club": "9-iron",
+      "clubSpeedMph": 74,
+      "ballSpeedMph": 95,
+      "launchDeg": 23.5,
+      "spinRpm": 7605,
+      "maxHeightYd": 27,
+      "landAngleDeg": 48,
+      "carryYd": 123
+    },
+    {
+      "club": "PW",
+      "clubSpeedMph": 72,
+      "ballSpeedMph": 88,
+      "launchDeg": 25.2,
+      "spinRpm": 8465,
+      "maxHeightYd": 27,
+      "landAngleDeg": 48,
+      "carryYd": 111
+    }
+  ]
+}

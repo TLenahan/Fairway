@@ -6,6 +6,13 @@ import { simulate } from './simulate';
  * the reference. Inputs are the measured values VIEW displayed. Tolerances
  * are deliberately loose enough to survive coefficient tweaks but tight
  * enough that a regression to the pre-calibration model fails loudly.
+ *
+ * Since the 2026-07-17 aero refit (aero-calibration.spec.ts) the model is
+ * anchored to TrackMan truth, and a structured TrackMan↔VIEW vendor split
+ * shows up here: VIEW flies high-spin 9-irons ~3–5 yd farther and low-spin
+ * 5-irons ~3–7 yd shorter than TrackMan physics (overall bias −0.6 yd,
+ * mean |err| 3.7 yd). Tolerances below allow that split; the tight bias
+ * bound is the real regression tripwire.
  */
 // [name, ballMph, launch, hla, back, side, carryYd, totalYd, apexFt]
 const SHOTS: [
@@ -43,10 +50,10 @@ const MPH = 2.2369362920544;
 const YD = 1.0936132983377078;
 const FT = 3.280839895;
 
-const CARRY_TOLERANCE_YD = 7;
-const TOTAL_TOLERANCE_YD = 8;
+const CARRY_TOLERANCE_YD = 9;
+const TOTAL_TOLERANCE_YD = 9;
 const APEX_TOLERANCE_FT = 12;
-const MEAN_CARRY_TOLERANCE_YD = 3.5;
+const MEAN_CARRY_TOLERANCE_YD = 4.5;
 
 describe('flight model vs Uneekor VIEW (18 real shots, sea level)', () => {
   const results = SHOTS.map(
