@@ -42,6 +42,13 @@ describe('committed captures — zero missed real shots', () => {
     expect(res.unmatchedShots).toEqual([]);
     expect(res.swings.filter((s) => s.matchedShot).length).toBe(19);
   });
+
+  it('chip session (60°/PW/7i bump-and-runs, 2.4–31 m, incl. two duffs)', () => {
+    const cap = load('2026-07-18T03-02-21-session.ndjson');
+    const res = replayCapture(cap);
+    expect(res.unmatchedShots).toEqual([]);
+    expect(res.swings.filter((s) => s.matchedShot).length).toBe(21);
+  });
 });
 
 describe('committed captures — zero false positives', () => {

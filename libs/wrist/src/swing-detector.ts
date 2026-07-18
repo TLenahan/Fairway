@@ -35,8 +35,8 @@ import {
  *   the wrist hinge while the arm rotates fast, and a waggle is pure hinge.
  * - θ(t) is the UNWRAPPED SIGNED rotation about the swing axis (established
  *   from the first ~25° of takeaway), not a geodesic angle: a full swing
- *   passes 180° where a geodesic folds back and the top vanishes. Validated
- *   on range data: chips top out ~75–130°, full swings ~240°, monotonic.
+ *   passes 180° where a geodesic folds back and the top vanishes. Labeled
+ *   captures put full/partial swing tops at ~225–290° and chips at ~20–150°.
  * - The address reference freezes from whatever brief quiescence precedes the
  *   takeaway (averaged pose), captured from a rolling buffer — consecutive
  *   rehearsal swings re-anchor in the 24–54 °/s lulls between them.
@@ -57,8 +57,10 @@ import {
  * hold progress (the "hold still… GO" cue) and a qualifying hold stamps
  * addressHeldMs and a clean pre-swing angle snapshot, but detection behaves
  * identically without it. `onPhase` fires at takeaway / top / impact zone /
- * finish / abort; takeaway is emitted only once a candidate backswing exceeds
- * ~20° so that walking and fidgeting never spam phase consumers.
+ * finish / abort; takeaway / top / impact-zone events emit only once a
+ * candidate backswing exceeds emitTakeawayDeg (default 30°), so waggles and
+ * fidgeting never spam phase consumers — sub-30° strokes (tiny chips caught
+ * by the chip band) surface as swing events alone.
  */
 export interface SwingSample {
   tMs: number; // arrival epoch ms — carried onto keyframes for the store join
@@ -93,13 +95,27 @@ export interface SwingDetectorOptions {
   topEpsDeg?: number;
   /** machinery floor: below this a reversal is a wiggle, not a top (deg) */
   minTopDeg?: number;
-  /** validation floor for the FINAL swing top (deg). Tuned on full/partial
-      swings (labeled minimum 225°) vs the tallest negatives-session motion
-      (77°); chips are NOT in the tuning data — when chip captures land,
-      re-derive this from their top-angle distribution */
+  /** full band: validation floor for the swing top (deg). Tuned on labeled
+      full/partial swings (minimum 225°) vs the tallest negatives-session
+      motion (77°); smaller strokes validate through the chip band instead */
   minTopValidDeg?: number;
   /** downswing must bring θ back below this — near address (deg) */
   impactReturnDeg?: number;
+  /** chip band: validation floor for the swing top (deg) */
+  chipMinTopDeg?: number;
+  /** chip band: downswing envelope floor (deg/s) */
+  chipMinPeakDegS?: number;
+  /** chip band: rescan trigger sensitivity (deg/s) — a shock spike with no
+      swing in flight rewinds ~2.5 s and re-enters at this lower gate, since
+      a duffed bump-and-run's whole backswing can run below enterDegS */
+  chipEnterDegS?: number;
+  /** chip band: impact-neighborhood shock floor (raw lsb). Sub-full-swing
+      amplitudes overlap putts/waggles/handling kinematically — only strikes
+      that disturbed the IMU hard (ball/turf) validate. This is an impact-
+      PLAUSIBILITY floor, never a claim of ball contact (the launch-monitor
+      join stays the only contact truth); the cost is that low-amplitude
+      practice swings without ground contact are not detected */
+  chipShockLsb?: number;
   /** follow-through must pass this far beyond address (deg) */
   minFollowDeg?: number;
   /** θ rebound off the follow-through min that finalizes the swing (deg) */
@@ -188,6 +204,9 @@ const THETA_SMALL_DEG = 15;
 /** a finish rebound must be this quiet relative to the swing's own peak —
     an envelope still racing past it means the swing is still in progress */
 const REBOUND_QUIET_FRAC = 0.5;
+/** shock-triggered rescan: how far back to reprocess, and its cooldown (s) */
+const RESCAN_LOOKBACK_S = 2.5;
+const RESCAN_COOLDOWN_S = 2.0;
 /** finish-reversal finalizes hold this long before emitting: an envelope
     surging past the candidate's peak in that window proves the frame missed
     the real swing (s) */
@@ -246,11 +265,13 @@ export class SwingDetector {
   private qRelAddr: Quat = [1, 0, 0, 0];
   private addressSample: Processed | null = null;
   private addressHeldMs = 0;
+  private anchorStill = false;
   private tTakeawayDev = 0;
   private takeawayEmitted = false;
   private prevQB: Quat = [1, 0, 0, 0];
   private axisAccum: [number, number, number] = [0, 0, 0];
   private axis: Vec3 | null = null;
+  private axisFlipped = false;
   private theta = 0;
   private prevTheta = 0;
   private thetaMax = 0;
@@ -274,6 +295,10 @@ export class SwingDetector {
   private tPeakDownDev = 0;
   private thetaFollowMin = 0;
   private thetaFollowMinSample: Processed | null = null;
+  private shockNearImpact = 0;
+  private chipEnterUntilDev = -Infinity;
+  private lastRescanDev = -Infinity;
+  private lastEmitDev = -Infinity;
   private shockPeak = 0;
   private shockSample: Processed | null = null;
   private stillDwellStartDev: number | null = null;
@@ -298,8 +323,12 @@ export class SwingDetector {
       restartNegDeg: options.restartNegDeg ?? 12,
       reversalMarginDeg: options.reversalMarginDeg ?? 10,
       topEpsDeg: options.topEpsDeg ?? 3,
-      minTopDeg: options.minTopDeg ?? 45,
+      minTopDeg: options.minTopDeg ?? 15,
       minTopValidDeg: options.minTopValidDeg ?? 140,
+      chipMinTopDeg: options.chipMinTopDeg ?? 15,
+      chipEnterDegS: options.chipEnterDegS ?? 45,
+      chipMinPeakDegS: options.chipMinPeakDegS ?? 250,
+      chipShockLsb: options.chipShockLsb ?? 6000,
       impactReturnDeg: options.impactReturnDeg ?? 25,
       minFollowDeg: options.minFollowDeg ?? 8,
       finishReversalDeg: options.finishReversalDeg ?? 15,
@@ -352,6 +381,28 @@ export class SwingDetector {
   }
 
   private stepState(p: Processed): void {
+    // a violent IMU disturbance (ball/turf) with no swing in flight means a
+    // stroke slipped under the enter gate — a duffed bump-and-run's whole
+    // backswing can run below it. Rewind and reprocess at chip sensitivity.
+    // This is a re-analysis TRIGGER, never a claim that a ball was struck.
+    if (
+      p.shock >= this.opts.chipShockLsb &&
+      (this.state === 'idle' || this.state === 'backswing') &&
+      p.tDev - this.lastRescanDev > RESCAN_COOLDOWN_S
+    ) {
+      this.lastRescanDev = p.tDev;
+      this.chipEnterUntilDev = p.tDev;
+      if (this.takeawayEmitted) this.emitPhase('aborted', p);
+      this.takeawayEmitted = false;
+      this.state = 'idle';
+      this.lullSample = null;
+      this.earliestAnchorDev = Math.max(
+        p.tDev - RESCAN_LOOKBACK_S,
+        this.lastEmitDev,
+      );
+      this.backfillAfter(this.earliestAnchorDev, p.tDev);
+      return;
+    }
     if (this.state !== 'idle' && p.omega < this.opts.enterDegS) {
       if (this.lullSample === null || p.omega < this.lullSample.omega) {
         this.lullSample = p;
@@ -589,11 +640,19 @@ export class SwingDetector {
 
   /* ────────────────────── state steps ────────────────────── */
 
+  /** the enter gate, lowered inside a shock-triggered rescan window */
+  private enterFor(p: Processed): number {
+    return p.tDev <= this.chipEnterUntilDev
+      ? this.opts.chipEnterDegS
+      : this.opts.enterDegS;
+  }
+
   private stepIdle(p: Processed): void {
-    if (p.omega < this.opts.enterDegS) return;
+    const enter = this.enterFor(p);
+    if (p.omega < enter) return;
     // the takeaway anchor is the deepest recent lull: the last sample at the
     // bottom of the quiescence the motion rose out of
-    const anchor = this.trailingLull(p);
+    const anchor = this.trailingLull(p, enter);
     if (anchor === null) return; // still loud since the last swing — wait
     this.beginSwing(anchor);
     this.backfillAfter(anchor.tDev, p.tDev);
@@ -601,14 +660,14 @@ export class SwingDetector {
 
   /** Deepest sub-enter sample in the look-back window before `p` (latest of
       near-equal minima). Null when no eligible lull exists yet. */
-  private trailingLull(p: Processed): Processed | null {
+  private trailingLull(p: Processed, enter: number): Processed | null {
     let minOmega = Infinity;
     for (const r of this.recent) {
       if (
         r.tDev < p.tDev &&
         p.tDev - r.tDev <= ANCHOR_LOOKBACK_S &&
         r.tDev >= this.earliestAnchorDev &&
-        r.omega < this.opts.enterDegS &&
+        r.omega < enter &&
         r.omega < minOmega
       ) {
         minOmega = r.omega;
@@ -666,9 +725,13 @@ export class SwingDetector {
     // at address (a shuffle drifts θ but stays AT the ball; a pause at the
     // top does not) — never on a genuine top pause.
     this.candMaxOmega = Math.max(this.candMaxOmega, p.omega);
+    // θ guard: a dip 20°+ into the climb is mid-swing, not an address — at
+    // chip scale the POSE stays near address through the whole backswing,
+    // so the pose test alone would cannibalize tiny strokes
     if (
       p.omega < o.relLullDegS &&
       p.omega <= TROUGH_FRAC * this.candMaxOmega &&
+      Math.abs(this.theta) <= 20 &&
       (this.lastAddressQB === null ||
         geodesicDeg(this.lastAddressQB, p.qB) <= o.readdressPoseDeg) &&
       (this.candTrough === null || p.omega < this.candTrough.omega)
@@ -693,11 +756,23 @@ export class SwingDetector {
       this.emitPhase('takeaway', this.addressSample);
     }
 
-    // forward press / wrong-way start: the initial direction was not the
-    // backswing — retry from the best lull so the real climb starts clean
+    // forward press / wrong-way start: the sign reference froze on fidget
+    // or a press, opposite the real climb. Flip once — the frame is fine,
+    // only the direction guess was wrong. A second dive is a real reversal.
     if (this.theta < -o.restartNegDeg && this.thetaMax < o.minTopDeg) {
-      this.dieWithRetry(p);
-      return;
+      if (!this.axisFlipped && this.axis !== null && this.thetaMax < 15) {
+        this.axisFlipped = true;
+        this.axis = [-this.axis[0], -this.axis[1], -this.axis[2]];
+        this.theta = -this.theta;
+        this.prevTheta = -this.prevTheta;
+        this.thetaMax = this.theta;
+        this.topSample = p;
+        this.tTopFirstDev = p.tDev;
+        this.tTopLastDev = p.tDev;
+      } else {
+        this.dieWithRetry(p);
+        return;
+      }
     }
 
     // reversal: the climb turned around
@@ -721,16 +796,31 @@ export class SwingDetector {
           this.tPeakDownDev = p.tDev;
         }
         // a pump drill re-enters the backswing; only a materially higher top
-        // re-buzzes phase consumers
+        // re-buzzes phase consumers — and sub-takeaway strokes (waggles,
+        // tiny chips) emit no phases at all, only the swing event
         if (
-          this.lastTopEmitTheta === Infinity ||
-          this.thetaMax >= this.lastTopEmitTheta + o.reversalMarginDeg
+          this.takeawayEmitted &&
+          (this.lastTopEmitTheta === Infinity ||
+            this.thetaMax >= this.lastTopEmitTheta + o.reversalMarginDeg)
         ) {
           this.lastTopEmitTheta = this.thetaMax;
           this.emitPhase('top', this.topSample);
         }
+      } else if (this.anchorStill) {
+        // pre-shot fidget inside a TRUSTED frame: restart the climb in
+        // place — abandoning a still anchor loses a small stroke's address
+        this.thetaMax = Math.max(this.theta, 0);
+        this.topSample = p;
+        this.tTopFirstDev = p.tDev;
+        this.tTopLastDev = p.tDev;
+        this.omegaPeakBack = Math.max(
+          this.omegaPeakBack,
+          this.omegaPeakSinceTopSet,
+        );
+        this.omegaPeakSinceTopSet = 0;
+        this.tPeakSinceTopSetDev = p.tDev;
       } else {
-        this.dieWithRetry(p); // sub-swing wiggle: restart from the best lull
+        this.dieWithRetry(p); // restart from the best lull
       }
       return;
     }
@@ -807,18 +897,39 @@ export class SwingDetector {
     this.thetaFollowMin = this.theta;
     this.thetaFollowMinSample = impact;
     this.quietSinceDev = null;
-    this.emitPhase('impactZone', impact);
+    this.shockNearImpact = 0;
+    for (const r of this.recent) {
+      if (
+        r.tDev >= impact.tDev - 0.15 &&
+        r.tDev <= impact.tDev &&
+        r.shock > this.shockNearImpact
+      ) {
+        this.shockNearImpact = r.shock;
+      }
+    }
+    if (this.takeawayEmitted) this.emitPhase('impactZone', impact);
   }
 
   private stepFollowthrough(p: Processed): void {
     this.prevCandSample = p;
     this.integrate(p);
-    if (p.omega > this.omegaPeakDown) {
+    const o = this.opts;
+    // the bottom of the arc is the fastest instant of THIS swing — motion
+    // beyond the coincidence window (a rake, the next takeaway) is not it
+    if (
+      p.omega > this.omegaPeakDown &&
+      (p.tDev - this.tImpactZoneDev) * 1000 <= o.maxPeakLagMs
+    ) {
       this.omegaPeakDown = p.omega;
       this.tPeakDownDev = p.tDev;
     }
+    if (
+      p.shock > this.shockNearImpact &&
+      (p.tDev - this.tImpactZoneDev) * 1000 <= o.maxPeakLagMs
+    ) {
+      this.shockNearImpact = p.shock;
+    }
     this.trackShock(p);
-    const o = this.opts;
 
     if (this.theta < this.thetaFollowMin) {
       this.thetaFollowMin = this.theta;
@@ -862,7 +973,10 @@ export class SwingDetector {
   private stepConfirm(p: Processed): void {
     this.prevCandSample = p;
     this.integrate(p);
-    if (p.omega > this.omegaPeakDown) {
+    if (
+      p.omega > this.omegaPeakDown &&
+      (p.tDev - this.tImpactZoneDev) * 1000 <= this.opts.maxPeakLagMs
+    ) {
       this.omegaPeakDown = p.omega;
       this.tPeakDownDev = p.tDev;
     }
@@ -900,9 +1014,11 @@ export class SwingDetector {
     const magDeg = mag * RAD_TO_DEG;
     if (this.axis === null) {
       const elapsedMs = (p.tDev - this.tTakeawayDev) * 1000;
+      // the time-based freeze needs real rotation accrued — tiny pre-shot
+      // drift would otherwise lock the axis before a small stroke's climb
       if (
         magDeg >= this.opts.axisFreezeDeg ||
-        (elapsedMs >= this.opts.axisFreezeMs && magDeg >= 5)
+        (elapsedMs >= this.opts.axisFreezeMs && magDeg >= 12)
       ) {
         this.axis = [
           this.axisAccum[0] / mag,
@@ -943,6 +1059,7 @@ export class SwingDetector {
     if (anchor.omega < this.opts.holdStillDegS) {
       this.lastAddressQB = this.qBAddr;
     }
+    this.anchorStill = anchor.omega < this.opts.stillDegS;
     this.addressSample = anchor;
     this.addressHeldMs =
       this.holdStartTDev !== null ||
@@ -965,6 +1082,7 @@ export class SwingDetector {
     this.prevQB = anchor.qB;
     this.axisAccum = [0, 0, 0];
     this.axis = null;
+    this.axisFlipped = false;
     this.theta = 0;
     this.prevTheta = 0;
     this.thetaMax = 0;
@@ -1024,10 +1142,15 @@ export class SwingDetector {
     const downswingMs = (impact.tDev - this.tTopLastDev) * 1000;
     const peakToImpactMs = (this.tPeakDownDev - impact.tDev) * 1000;
     const o = this.opts;
+    const fullBand =
+      this.thetaMax >= o.minTopValidDeg && this.omegaPeakDown >= o.minPeakDegS;
+    const chipBand =
+      this.thetaMax >= o.chipMinTopDeg &&
+      this.omegaPeakDown >= o.chipMinPeakDegS &&
+      this.shockNearImpact >= o.chipShockLsb;
     const valid =
-      this.thetaMax >= o.minTopValidDeg &&
+      (fullBand || chipBand) &&
       this.thetaFollowMin <= -o.minFollowDeg &&
-      this.omegaPeakDown >= o.minPeakDegS &&
       this.omegaPeakDown >= this.omegaPeakBack * o.downswingSpeedRatio &&
       // the bottom of the arc IS the fastest instant: a "peak" long after the
       // crossing means this candidate consumed someone else's swing
@@ -1063,6 +1186,7 @@ export class SwingDetector {
     };
     this.postSwingQB = last.qB;
     this.lastAddressQB = this.qBAddr;
+    this.lastEmitDev = last.tDev;
     this.emitPhase('finish', last);
     this.handlers.onSwing(shot);
     // a consecutive rehearsal swing rises straight off the finish rebound —
