@@ -20,14 +20,16 @@ const mag = (v: readonly [number, number, number]): number =>
   Math.hypot(v[0], v[1], v[2]);
 
 /**
- * Synthetic swing rig. θ(t) is the hand IMU's rotation from its start pose
- * about a fixed axis; segments compose realistic profiles. Host arrival time
- * is quantized to 30 ms batches ON PURPOSE — every duration assertion below
- * only holds if the detector times phases on the device clock instead.
+ * Synthetic swing rig. θ(t) is the hand IMU's SIGNED rotation about a fixed
+ * axis: positive = backswing side, negative = past address into the follow-
+ * through (matching real swing geometry — the finish is on the OPPOSITE side
+ * of address from the top). Host arrival time is quantized to 30 ms batches
+ * ON PURPOSE — every duration assertion below only holds if the detector
+ * times phases on the device clock instead.
  *
  * `lag` mode welds IMU A to IMU B with a constant offset: the wrist hinge
  * (qRel) never changes even though both IMUs swing hard — the lag-held swing
- * the old inter-IMU detector was blind to.
+ * an inter-IMU detector would be blind to.
  */
 class Rig {
   readonly samples: SwingSample[] = [];
@@ -54,6 +56,20 @@ class Rig {
   private step(): void {
     this.tS += DT_S;
     this.tsa = (this.tsa + TSA_PER_STEP) % 65536;
+  }
+
+  /** Insert a host-clock stall: frames stop for `seconds` (BLE outage). The
+      device clock keeps running underneath — the unwrap must resync. */
+  gap(seconds: number): this {
+    const n = Math.round(seconds / DT_S);
+    for (let i = 0; i < n; i += 1) this.step();
+    return this;
+  }
+
+  /** Teleport the pose home — the golfer moved during an outage. */
+  home(): this {
+    this.thetaDeg = 0;
+    return this;
   }
 
   still(seconds: number, shock = 20): this {
@@ -91,13 +107,13 @@ class Rig {
     return this;
   }
 
-  /** hold → backswing → optional pause → downswing → follow-through → finish */
+  /** hold → backswing (+200°) → optional pause → downswing through the
+      address into a −110° finish → settle */
   fullSwing(opts: { holdS?: number; pauseS?: number; topDeg?: number } = {}): this {
     return this.still(opts.holdS ?? 1.8)
-      .ramp(opts.topDeg ?? 80, 0.7)
+      .ramp(opts.topDeg ?? 200, 0.7)
       .pauseAtTop(opts.pauseS ?? 0)
-      .ramp(2, 0.25, 4000)
-      .ramp(110, 0.35, 800)
+      .ramp(-110, 0.35, 4000)
       .still(1.0);
   }
 
@@ -136,11 +152,11 @@ describe('SwingDetector — clean swing out of an address hold', () => {
     const s = swings[0];
     expect(s.addressHeldMs).toBeGreaterThan(1500);
     expect(s.backswingMs).toBeGreaterThan(450);
-    expect(s.backswingMs).toBeLessThan(750);
+    expect(s.backswingMs).toBeLessThan(800);
     expect(s.topPauseMs).toBeLessThan(150); // flowing swing — no real pause
-    expect(s.downswingMs).toBeGreaterThan(140);
+    expect(s.downswingMs).toBeGreaterThan(80);
     expect(s.downswingMs).toBeLessThan(320);
-    expect(s.peakAngularSpeedDegS).toBeGreaterThan(300);
+    expect(s.peakAngularSpeedDegS).toBeGreaterThan(1000);
   });
 
   it('orders keyframes and anchors angles to the address hold', () => {
@@ -148,11 +164,10 @@ describe('SwingDetector — clean swing out of an address hold', () => {
     expect(s.address.tDevS).toBeLessThan(s.top.tDevS);
     expect(s.top.tDevS).toBeLessThan(s.impact.tDevS);
     expect(s.address.rotVecFromAddressDeg).toEqual([0, 0, 0]);
-    // top: the hand rotated ~80° away from setup (qA still ⇒ hinge = θ)
-    expect(mag(s.top.rotVecFromAddressDeg)).toBeGreaterThan(70);
-    expect(mag(s.top.rotVecFromAddressDeg)).toBeLessThan(90);
+    // top: the hand rotated ~200° away from setup (qA still ⇒ hinge = θ)
+    expect(mag(s.top.rotVecFromAddressDeg)).toBeGreaterThan(140);
     // impact zone: hands back near the address pose
-    expect(mag(s.impact.rotVecFromAddressDeg)).toBeLessThan(25);
+    expect(mag(s.impact.rotVecFromAddressDeg)).toBeLessThan(30);
     expect(s.calibrated).toBe(false);
     expect(s.top.angles.extensionDeg).toBeNull();
     expect(s.shock.peakAbsLsb).toBe(4000);
@@ -166,7 +181,7 @@ describe('SwingDetector — clean swing out of an address hold', () => {
       'finish',
     ]);
     const top = phases[1];
-    expect(mag(top.rotVecFromAddressDeg)).toBeGreaterThan(70);
+    expect(mag(top.rotVecFromAddressDeg)).toBeGreaterThan(140);
   });
 
   it('streams hold progress and arms before the takeaway', () => {
@@ -180,13 +195,51 @@ describe('SwingDetector — clean swing out of an address hold', () => {
   });
 });
 
-describe('SwingDetector — the failure modes that motivated the rewrite', () => {
-  it('a long pause at the top yields ONE swing, not a phantom', () => {
-    const { swings } = run(new Rig().fullSwing({ pauseS: 2.0 }));
+describe('SwingDetector — hold-free detection', () => {
+  it('detects a swing with NO address hold (the old machine found zero)', () => {
+    const { swings } = run(
+      new Rig()
+        .still(0.4) // far too short to arm a drill hold
+        .ramp(200, 0.7)
+        .ramp(-110, 0.35, 4000)
+        .still(1.0),
+    );
     expect(swings).toHaveLength(1);
-    expect(swings[0].topPauseMs).toBeGreaterThan(1700);
-    expect(swings[0].backswingMs).toBeLessThan(750); // pause not blamed on the backswing
-    expect(swings[0].downswingMs).toBeLessThan(320); // …nor on the downswing
+    expect(swings[0].addressHeldMs).toBeLessThan(1500);
+  });
+
+  it('detects consecutive rehearsal swings with no stillness between', () => {
+    const rig = new Rig().still(0.5);
+    // three swings chained through brief lulls only — swish swish swish
+    for (let i = 0; i < 3; i += 1) {
+      rig.ramp(200, 0.7).ramp(-110, 0.35, 3000).ramp(0, 0.6, 90).still(0.25);
+    }
+    const { swings } = run(rig);
+    expect(swings).toHaveLength(3);
+  });
+});
+
+describe('SwingDetector — the failure modes that motivated the rework', () => {
+  it('rejects a waggle: no swing, no top phase', () => {
+    const { swings, phases } = run(
+      new Rig().still(2.0).wave(12, 1.5, 3.0).still(1.5),
+    );
+    expect(swings).toHaveLength(0);
+    expect(phases.map((p) => p.phase)).not.toContain('top');
+  });
+
+  it('rejects a putt-scale stroke (below the validation top floor)', () => {
+    const { swings } = run(
+      new Rig().still(2.0).ramp(40, 0.6).ramp(-15, 0.4, 800).still(1.5),
+    );
+    expect(swings).toHaveLength(0);
+  });
+
+  it('rejects a backswing that returns slowly without a downswing', () => {
+    const { swings } = run(
+      new Rig().still(2.0).ramp(200, 0.7).ramp(0, 3.0, 60).still(1.5),
+    );
+    expect(swings).toHaveLength(0);
   });
 
   it('detects a lag-held swing where the wrist hinge never moves', () => {
@@ -196,45 +249,36 @@ describe('SwingDetector — the failure modes that motivated the rewrite', () =>
     expect(mag(swings[0].top.rotVecFromAddressDeg)).toBeLessThan(5);
   });
 
-  it('rejects a waggle: armed, aborted, no swing', () => {
-    const { swings, phases } = run(
-      new Rig().still(2.0).wave(12, 1.5, 3.0).still(1.5),
-    );
-    expect(swings).toHaveLength(0);
-    expect(phases.map((p) => p.phase)).not.toContain('top');
-    expect(phases.map((p) => p.phase)).toContain('aborted');
-  });
-
-  it('rejects a swing with no address hold', () => {
-    const { swings, phases } = run(
-      new Rig()
-        .still(0.5) // too short to arm
-        .ramp(80, 0.7)
-        .ramp(2, 0.25, 4000)
-        .ramp(110, 0.35)
-        .still(1.0),
-    );
-    expect(swings).toHaveLength(0);
-    expect(phases.map((p) => p.phase)).not.toContain('takeaway');
-  });
-
-  it('rejects a backswing that returns slowly without a downswing', () => {
-    const { swings, phases } = run(
-      new Rig().still(2.0).ramp(60, 0.6).ramp(0, 2.0, 60).still(1.5),
-    );
-    expect(swings).toHaveLength(0);
-    expect(phases.map((p) => p.phase)).toContain('aborted');
-  });
-
   it('finds nothing in a still hold', () => {
     const { swings } = run(new Rig().still(5.0));
     expect(swings).toHaveLength(0);
+  });
+
+  it('a long pause at the top yields ONE swing, not a phantom', () => {
+    const { swings } = run(new Rig().fullSwing({ pauseS: 2.0 }));
+    expect(swings).toHaveLength(1);
+    expect(swings[0].topPauseMs).toBeGreaterThan(1700);
+    expect(swings[0].backswingMs).toBeLessThan(800); // pause not blamed on the backswing
+    expect(swings[0].downswingMs).toBeLessThan(320); // …nor on the downswing
+  });
+});
+
+describe('SwingDetector — stream breaks (BLE stalls)', () => {
+  it('aborts a swing the gap interrupted and detects the next one clean', () => {
+    const rig = new Rig().still(2.0).ramp(200, 0.7); // backswing, then stall
+    rig.gap(34.5); // the real capture's 34.5 s outage wraps tsA ~34 times
+    rig.home().still(1.5).fullSwing();
+    const { swings } = run(rig);
+    expect(swings).toHaveLength(1);
+    // the surviving swing is the post-gap one — its durations are sane
+    expect(swings[0].backswingMs).toBeLessThan(800);
+    expect(swings[0].downswingMs).toBeLessThan(320);
   });
 });
 
 describe('SwingDetector — sequences and calibration', () => {
   it('holding the finish pose does not re-arm (no phantom GO)', () => {
-    const rig = new Rig().fullSwing(); // ends holding the finish at θ=110
+    const rig = new Rig().fullSwing(); // ends holding the finish at θ=−110
     rig.still(3.0); // keep posing — a hold accumulates but must not arm
     const { swings, holds } = run(rig);
     expect(swings).toHaveLength(1);
@@ -247,15 +291,15 @@ describe('SwingDetector — sequences and calibration', () => {
 
   it('re-arms once the golfer leaves the finish and re-addresses', () => {
     const rig = new Rig().fullSwing();
-    rig.ramp(0, 1.0, 40).still(2.0); // lower the club, settle over the ball
+    rig.ramp(0, 1.5, 40).still(2.0); // lower the club, settle over the ball
     const { holds } = run(rig);
     expect(holds[holds.length - 1]?.armed).toBe(true);
   });
 
   it('detects back-to-back swings, each re-armed by its own hold', () => {
     const rig = new Rig().fullSwing({ holdS: 2.0 });
-    rig.ramp(0, 1.0, 40); // stroll back to address slowly (no false trigger)
-    rig.fullSwing({ holdS: 2.0, topDeg: 60 });
+    rig.ramp(0, 1.5, 40); // stroll back to address slowly (no false trigger)
+    rig.fullSwing({ holdS: 2.0, topDeg: 160 });
     const { swings } = run(rig);
     expect(swings).toHaveLength(2);
     expect(mag(swings[1].top.rotVecFromAddressDeg)).toBeLessThan(

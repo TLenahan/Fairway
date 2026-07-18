@@ -46,9 +46,9 @@ class FakeTransport implements WristBleTransport {
 
 /**
  * Build 0x90 telemetry frames replaying an address-hold swing: 1.8 s still,
- * cosine backswing to 80°, downswing back to 2°, follow-through to 110°,
- * settle. qB rotates about z; qA stays identity (records at 100 Hz device
- * time — tsA steps 640 at 64 kHz).
+ * cosine backswing to 200°, downswing through the address into a −110°
+ * finish, settle. qB rotates about z; qA stays identity (records at 100 Hz
+ * device time — tsA steps 640 at 64 kHz).
  */
 function swingFrames(): Uint8Array[] {
   const frames: Uint8Array[] = [];
@@ -78,10 +78,9 @@ function swingFrames(): Uint8Array[] {
   const ease = (from: number, to: number, i: number, n: number): number =>
     from + ((to - from) * (1 - Math.cos((Math.PI * i) / n))) / 2;
   for (let i = 0; i < 180; i += 1) frames.push(rec(0, 5)); // address hold
-  for (let i = 1; i <= 70; i += 1) frames.push(rec(ease(0, 80, i, 70), 200));
-  for (let i = 1; i <= 25; i += 1) frames.push(rec(ease(80, 2, i, 25), 4000));
-  for (let i = 1; i <= 35; i += 1) frames.push(rec(ease(2, 110, i, 35), 800));
-  for (let i = 0; i < 100; i += 1) frames.push(rec(110, 5)); // finish hold
+  for (let i = 1; i <= 70; i += 1) frames.push(rec(ease(0, 200, i, 70), 200));
+  for (let i = 1; i <= 30; i += 1) frames.push(rec(ease(200, -110, i, 30), 4000));
+  for (let i = 0; i < 100; i += 1) frames.push(rec(-110, 5)); // finish hold
   return frames;
 }
 

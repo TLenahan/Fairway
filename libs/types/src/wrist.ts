@@ -2,9 +2,10 @@ import { z } from 'zod';
 
 /* ───────────────────────── wrist sensor (HackMotion) ─────────────────────────
    A BLE dual-IMU wrist unit, and the PRIMARY swing detector: shots are
-   detected from wrist motion (address hold → backswing → top → downswing);
-   the EYE MINI's shot, when one joins, is additional context that confirms a
-   ball was struck and supplies its flight. This is a PEER of MonitorService
+   detected from the wrist-motion envelope alone (takeaway → top → downswing →
+   impact zone — no address hold required); the EYE MINI's shot, when one
+   joins, is additional context that confirms a ball was struck and supplies
+   its flight. This is a PEER of MonitorService
    (device.ts), not an implementation of it — BLE pairing/streaming semantics
    differ from the Mini's networked model, and there is no ball/club-mode
    concept. The reverse-engineered protocol, record decode, calibration, and
@@ -148,10 +149,11 @@ export type WristPhaseEvent = z.infer<typeof WristPhaseEventSchema>;
 
 /**
  * The swing event — the PRIMARY shot detection for this data source. A swing
- * only exists if the golfer first held still over the ball (addressHeldMs),
- * then produced a backswing→top→downswing envelope that validated. Whether a
- * ball was struck is NOT knowable from the wrist: the launch monitor join
- * supplies that as additional context. `impact` marks the impact ZONE (hands
+ * is a validated backswing→top→downswing envelope; no address hold is
+ * required (addressHeldMs reports whatever stillness preceded the takeaway,
+ * 0 when the golfer swung without settling). Whether a ball was struck is
+ * NOT knowable from the wrist: the launch monitor join supplies that as
+ * additional context. `impact` marks the impact ZONE (hands
  * returned to the address pose at peak speed) — a swing-geometry landmark,
  * never a claim of contact. Same for `shock` (raw accel context, unvalidated).
  * Phase durations are timed on the device clock, not BLE arrival.
@@ -161,7 +163,7 @@ export const WristShotSchema = z.object({
   durationMs: z.number(), // takeaway → settled, device clock
   peakAngularSpeedDegS: z.number(),
   calibrated: z.boolean(),
-  addressHeldMs: z.number(), // stillness before takeaway
+  addressHeldMs: z.number(), // stillness before takeaway (0 = swung without settling)
   backswingMs: z.number(), // takeaway → top first reached
   topPauseMs: z.number(), // dwell at the top (0 for a flowing swing)
   downswingMs: z.number(), // top last left → impact zone

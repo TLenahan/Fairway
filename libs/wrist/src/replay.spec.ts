@@ -52,11 +52,11 @@ function syntheticCapture(): string {
     lines.push(frameLine(tMs, tsa, theta, shock));
   };
   for (let i = 0; i < 180; i++) push(0, 5); // address hold
-  for (let i = 1; i <= 70; i++) push(ease(0, 80, i, 70), 200); // backswing
-  for (let i = 1; i <= 25; i++) push(ease(80, 2, i, 25), 4000); // downswing
+  for (let i = 1; i <= 70; i++) push(ease(0, 200, i, 70), 200); // backswing
+  // downswing through the address into a −110° finish (opposite side)
+  for (let i = 1; i <= 30; i++) push(ease(200, -110, i, 30), 4000);
   const impactMs = tMs; // ball contact ~ end of downswing
-  for (let i = 1; i <= 35; i++) push(ease(2, 110, i, 35), 800); // follow-through
-  for (let i = 0; i < 100; i++) push(110, 5); // settle
+  for (let i = 0; i < 100; i++) push(-110, 5); // settle at the finish
   // MINI shot lands ~150ms after the wrist impact zone, as in the real join
   lines.push(
     JSON.stringify({
