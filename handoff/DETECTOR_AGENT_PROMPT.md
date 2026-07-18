@@ -55,7 +55,8 @@ One host clock (`Date.now()` ms) across all line types:
 ## Sensor facts (verified against real captures — do not re-derive, but DO re-confirm on the new data)
 
 - **Sample rate is variable, ~41–50 Hz** (not fixed). Never assume a fixed rate; time everything off the device clock.
-- **Device clock:** each record carries `tsA`, a u16 at **64000 Hz** that wraps. Unwrap it (the detector already does). It is perfectly synced to real time (host/device span ratio ≈ 1.000). **All swing-phase durations MUST be timed on this device clock, never on BLE arrival time** — arrival is batched/jittery.
+- **Device clock:** each record carries `tsA`, a u16 at **64000 Hz** that wraps (~every 1.02 s). Unwrap it (the detector already does). Within a continuous frame stream it is perfectly synced (host/device span ratio ≈ 1.000). **All swing-phase durations MUST be timed on this device clock, never on BLE arrival time** — arrival is batched/jittery.
+  - **BUT: a large frame outage breaks the unwrap.** A real capture has a **34.5 s gap** (BLE stall/reconnect during idle) — the u16 wrapped ~34× unobserved, so the naive unwrap under-counts and the whole-session ratio reads ~1.07 instead of 1.000. **Detect a host-time gap (> ~1 s between consecutive frames) and treat it as a clock-resync boundary:** reset the detector to idle across it and do not trust device-time deltas that span it. Timing within each continuous segment is exact; timing across a gap is not. (In the sample this gap fell in idle so no swing spanned it, but do not assume that always holds.)
 - **Two IMUs:** `qA` = forearm, `qB` = hand (both absolute orientations, w-first, de-scaled from Q14). `relativeQuat(qA,qB)` = the wrist hinge.
 - **`shock`** = max|motion channel|, **saturates near 16384 on hard contact** (turf/ball). Useful *context* only — per hard rule #1, never use it to assert contact.
 
