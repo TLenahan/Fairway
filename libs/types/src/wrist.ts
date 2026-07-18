@@ -204,6 +204,11 @@ export interface WristService {
   /** Stream the chatty per-record `sample` event (calibration capture / live
       view). Off by default. */
   setEmitSamples(enabled: boolean): void;
+  /** Pulse the sensor's vibration motor for durationMs, best-effort: no-op
+      unless connected, failures swallowed. A new pulse restarts the clock.
+      Callers must keep the motor quiet through the impact window — motor
+      shock on the IMU is uncharacterized and the chip band gates on it. */
+  vibrate(durationMs?: number): void;
   on<K extends keyof WristServiceEvents>(e: K, h: WristServiceEvents[K]): void;
   off<K extends keyof WristServiceEvents>(e: K, h: WristServiceEvents[K]): void;
 }

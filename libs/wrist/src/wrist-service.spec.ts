@@ -7,6 +7,7 @@ import {
   WristBleDevice,
   WristBleTransport,
 } from './ble-transport';
+import { CMD_VIBRATE_OFF, CMD_VIBRATE_ON } from './protocol';
 import { DEG_TO_RAD } from './quaternion';
 import { HackMotionWristService } from './wrist-service';
 
@@ -164,6 +165,64 @@ describe('HackMotionWristService', () => {
     for (const frame of swingFrames()) transport.conn.feed(frame);
     expect(swings).toHaveLength(1);
     service.disconnect();
+  });
+
+  it('pulses the vibration motor: ON at once, OFF at the deadline', async () => {
+    jest.useFakeTimers();
+    try {
+      const transport = new FakeTransport();
+      const service = new HackMotionWristService({
+        transport,
+        batteryPollMs: 1_000_000,
+      });
+      await service.connect('dev-1');
+      const before = transport.conn.writes.length;
+
+      service.vibrate(150);
+      expect(transport.conn.writes[before]).toEqual(CMD_VIBRATE_ON);
+      jest.advanceTimersByTime(149);
+      expect(transport.conn.writes).toHaveLength(before + 1);
+      jest.advanceTimersByTime(1);
+      expect(transport.conn.writes[before + 1]).toEqual(CMD_VIBRATE_OFF);
+
+      // an overlapping pulse restarts the clock — one OFF, at the NEW deadline
+      service.vibrate(150);
+      jest.advanceTimersByTime(100);
+      service.vibrate(150);
+      jest.advanceTimersByTime(100); // past the first pulse's cleared deadline
+      expect(transport.conn.writes).toHaveLength(before + 4); // two ONs, no OFF
+      jest.advanceTimersByTime(50);
+      expect(transport.conn.writes[before + 4]).toEqual(CMD_VIBRATE_OFF);
+
+      service.disconnect();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('vibrate no-ops when disconnected and OFFs a mid-pulse motor on teardown', async () => {
+    jest.useFakeTimers();
+    try {
+      const transport = new FakeTransport();
+      const service = new HackMotionWristService({
+        transport,
+        batteryPollMs: 1_000_000,
+      });
+      service.vibrate();
+      expect(transport.conn.writes).toHaveLength(0);
+
+      await service.connect('dev-1');
+      const before = transport.conn.writes.length;
+      service.vibrate(150);
+      // mid-pulse disconnect: the ON payload's ~10 s max duration must not be
+      // left to run out — teardown sends the OFF and cancels the timer
+      service.disconnect();
+      expect(transport.conn.writes[before + 1]).toEqual(CMD_VIBRATE_OFF);
+      jest.advanceTimersByTime(1000);
+      expect(transport.conn.writes).toHaveLength(before + 2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('reports poweredOff before scanning when the radio is off', () => {

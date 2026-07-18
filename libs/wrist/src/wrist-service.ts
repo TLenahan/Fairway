@@ -19,6 +19,8 @@ import {
   CMD_READ_BATTERY,
   CMD_READ_SERIAL,
   CMD_START_STREAM,
+  CMD_VIBRATE_OFF,
+  CMD_VIBRATE_ON,
   OP_SERIAL,
   TELEMETRY_MARKER,
 } from './protocol';
@@ -61,6 +63,7 @@ export class HackMotionWristService implements WristService {
   private connection: WristBleConnection | null = null;
   private detector: SwingDetector | null = null;
   private batteryTimer: ReturnType<typeof setInterval> | null = null;
+  private vibrateTimer: ReturnType<typeof setTimeout> | null = null;
   private connectedDeviceId: string | null = null;
   private readonly scannedNames = new Map<string, string>();
   private scanning = false;
@@ -101,6 +104,16 @@ export class HackMotionWristService implements WristService {
 
   setEmitSamples(enabled: boolean): void {
     this.emitSamples = enabled;
+  }
+
+  vibrate(durationMs = 150): void {
+    if (this.state !== 'connected' || this.connection === null) return;
+    void this.connection.write(CMD_VIBRATE_ON).catch(() => undefined);
+    if (this.vibrateTimer !== null) clearTimeout(this.vibrateTimer);
+    this.vibrateTimer = setTimeout(() => {
+      this.vibrateTimer = null;
+      void this.connection?.write(CMD_VIBRATE_OFF).catch(() => undefined);
+    }, durationMs);
   }
 
   startScan(): void {
@@ -259,6 +272,13 @@ export class HackMotionWristService implements WristService {
 
   private teardown(): void {
     this.stopBatteryPolling();
+    if (this.vibrateTimer !== null) {
+      clearTimeout(this.vibrateTimer);
+      this.vibrateTimer = null;
+      // the ON payload carries a ~10 s max duration — don't leave a mid-pulse
+      // motor to run it out
+      void this.connection?.write(CMD_VIBRATE_OFF).catch(() => undefined);
+    }
     void this.connection?.disconnect().catch(() => undefined);
     this.connection = null;
     this.detector = null;

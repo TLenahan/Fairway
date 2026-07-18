@@ -17,7 +17,7 @@ import { z } from 'zod';
 
 import { distanceUnitLabel, formatDistance } from '@/lib/format';
 import { useFairwayStore, useServices, useSettings } from '@/services/context';
-import { playCue, playOutcome } from '@/services/drill-feedback';
+import { playCue, playOutcome, playRepBuzz } from '@/services/drill-feedback';
 
 type Distance = z.infer<typeof DistanceUnit>;
 
@@ -389,6 +389,19 @@ export default function DrillScreen() {
     wrist.on('phase', onPhase);
     return () => wrist.off('phase', onPhase);
   }, [wrist]);
+
+  // On-wrist buzz on the validated rep — deliberately NOT at the phase top
+  // like the audio verdict: the sensor's motor must stay quiet through the
+  // impact window (motor shock vs the chip band's gate is uncharacterized),
+  // and reps can't double-fire the way re-announced tops can. Keyed on the
+  // rep's `at` so plan recomputes don't retrigger.
+  const lastRepRef = useRef(lastRep);
+  lastRepRef.current = lastRep;
+  useEffect(() => {
+    const rep = lastRepRef.current;
+    if (rep === null || lastRepAt === null) return;
+    playRepBuzz(rep.outcome, wrist);
+  }, [lastRepAt, wrist]);
 
   // last carry: the newest session shot, but only when it landed after the
   // judged swing (drill doesn't own shots — they keep flowing to the session)
