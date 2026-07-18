@@ -1,12 +1,16 @@
 import { z } from 'zod';
 
 /* ───────────────────────── wrist sensor (HackMotion) ─────────────────────────
-   A second data source alongside the EYE MINI: a BLE dual-IMU wrist unit. This
-   is a PEER of MonitorService (device.ts), not an implementation of it — BLE
-   pairing/streaming semantics differ from the Mini's networked model, and there
-   is no ball/club-mode concept. The reverse-engineered protocol, record decode,
-   calibration, and swing detection all live in @golf/wrist; this file is only
-   the frozen contract every other lib shares.
+   A BLE dual-IMU wrist unit, and the PRIMARY swing detector: shots are
+   detected from the wrist-motion envelope alone (takeaway → top → downswing →
+   impact zone — no address hold required); the EYE MINI's shot, when one
+   joins, is additional context that confirms a ball was struck and supplies
+   its flight. This is a PEER of MonitorService
+   (device.ts), not an implementation of it — BLE pairing/streaming semantics
+   differ from the Mini's networked model, and there is no ball/club-mode
+   concept. The reverse-engineered protocol, record decode, calibration, and
+   swing detection all live in @golf/wrist; this file is only the frozen
+   contract every other lib shares.
 
    All timestamps are host arrival epoch ms (Date.now at packet receipt). The
    device's own clocks are opaque and unsynced, so arrival time is the only base
@@ -61,6 +65,33 @@ export const WristSampleSchema = z.object({
 });
 export type WristSample = z.infer<typeof WristSampleSchema>;
 
+/**
+ * Anatomical-axis calibration — pure data, produced by @golf/wrist's
+ * flat+raise procedure (the vendor's own flow: wrist flat in front of the
+ * body → confirm → slowly raise the forearm, elbow still). `qRef` is the
+ * flat-pose zero for the inter-IMU rotation; `frame` holds the orthonormal
+ * anatomical axes [flexion, deviation, rotation] as columns, in IMU-A body
+ * coordinates. Serializable so settings can persist it across sessions.
+ */
+/** Declared readonly (not z.infer) so @golf/wrist's immutable quaternion /
+    matrix tuples assign directly; the schema's output is assignable to it. */
+export interface WristCalibration {
+  qRef: readonly [number, number, number, number];
+  frame: readonly [
+    readonly [number, number, number],
+    readonly [number, number, number],
+    readonly [number, number, number],
+  ];
+}
+export const WristCalibrationSchema: z.ZodType<WristCalibration> = z.object({
+  qRef: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  frame: z.tuple([
+    z.tuple([z.number(), z.number(), z.number()]),
+    z.tuple([z.number(), z.number(), z.number()]),
+    z.tuple([z.number(), z.number(), z.number()]),
+  ]),
+});
+
 /** Anatomical wrist angles (degrees). Null until a calibration run has
     identified the anatomical axes (see @golf/wrist calibration). Before that
     only the keyframe's raw rotation vector is meaningful. */
@@ -74,28 +105,74 @@ export type WristAngles = z.infer<typeof WristAnglesSchema>;
 /** A single instant of a swing (address / top / impact). */
 export const WristKeyframeSchema = z.object({
   tMs: z.number(), // arrival epoch ms
+  tDevS: z.number(), // device-clock seconds (unwrapped tsA) — precise timing base
   angularSpeedDegS: z.number(),
   angles: WristAnglesSchema,
   // rotation vector (axis × angle, deg): neutral-relative when calibrated,
   // raw inter-IMU-relative otherwise. Singularity-free, unlike Euler angles.
   rotVecDeg: z.tuple([z.number(), z.number(), z.number()]),
+  // wrist rotation away from THIS swing's address hold (axis × angle, deg).
+  // Drift-free and strap-offset-free without any calibration — the drill's
+  // primary signal. ~zero at the address keyframe by construction.
+  rotVecFromAddressDeg: z.tuple([z.number(), z.number(), z.number()]),
 });
 export type WristKeyframe = z.infer<typeof WristKeyframeSchema>;
 
-/** The host-side swing event. `impact` is the peak-angular-speed instant (a
-    proxy); `shock` is the accel-channel candidate for true ball impact, which
-    stays unvalidated until cross-checked against launch-monitor shot timing. */
+/** Address-hold progress: the golfer standing still over the ball. Streamed
+    while stillness accumulates; `armed` flips when the hold satisfies the
+    detector's minimum and the next motion burst will be treated as a swing. */
+export const WristHoldSchema = z.object({
+  tMs: z.number(), // arrival epoch ms
+  heldMs: z.number(), // 0 on a reset (the golfer fidgeted / walked off)
+  requiredMs: z.number(), // detector's arming threshold
+  armed: z.boolean(),
+});
+export type WristHold = z.infer<typeof WristHoldSchema>;
+
+/** Real-time swing landmarks, emitted as they are recognized (top fires a
+    beat after the true top — the reversal must confirm first). This is what
+    in-swing audio/haptic feedback keys on. */
+export const WristSwingPhase = z.enum([
+  'takeaway', // motion burst out of an armed hold
+  'top', // rotation-from-address reversed — backswing peak located
+  'impactZone', // hands back at the address pose at speed (NOT ball contact)
+  'finish', // motion settled; the swing event follows if it validates
+  'aborted', // armed motion that failed swing validation — discarded
+]);
+export const WristPhaseEventSchema = z.object({
+  phase: WristSwingPhase,
+  tMs: z.number(), // arrival epoch ms of the underlying sample
+  rotVecFromAddressDeg: z.tuple([z.number(), z.number(), z.number()]),
+  angles: WristAnglesSchema, // anatomical at the instant; nulls uncalibrated
+});
+export type WristPhaseEvent = z.infer<typeof WristPhaseEventSchema>;
+
+/**
+ * The swing event — the PRIMARY shot detection for this data source. A swing
+ * is a validated backswing→top→downswing envelope; no address hold is
+ * required (addressHeldMs reports whatever stillness preceded the takeaway,
+ * 0 when the golfer swung without settling). Whether a ball was struck is
+ * NOT knowable from the wrist: the launch monitor join supplies that as
+ * additional context. `impact` marks the impact ZONE (hands
+ * returned to the address pose at peak speed) — a swing-geometry landmark,
+ * never a claim of contact. Same for `shock` (raw accel context, unvalidated).
+ * Phase durations are timed on the device clock, not BLE arrival.
+ */
 export const WristShotSchema = z.object({
-  tImpactMs: z.number(), // arrival epoch ms at impact — the launch-monitor join key
-  durationMs: z.number(),
+  tImpactMs: z.number(), // arrival epoch ms at the impact zone — the launch-monitor join key
+  durationMs: z.number(), // takeaway → settled, device clock
   peakAngularSpeedDegS: z.number(),
   calibrated: z.boolean(),
-  address: WristKeyframeSchema,
+  addressHeldMs: z.number(), // stillness before takeaway (0 = swung without settling)
+  backswingMs: z.number(), // takeaway → top first reached
+  topPauseMs: z.number(), // dwell at the top (0 for a flowing swing)
+  downswingMs: z.number(), // top last left → impact zone
+  address: WristKeyframeSchema, // averaged over the hold — pre-swing angles
   top: WristKeyframeSchema,
   impact: WristKeyframeSchema,
   shock: z.object({
     tMs: z.number(),
-    offsetFromImpactMs: z.number(), // + = shock after the speed peak
+    offsetFromImpactMs: z.number(), // + = shock after the impact zone
     peakAbsLsb: z.number(), // max |imu| over the swing, raw lsb
   }),
 });
@@ -103,12 +180,14 @@ export type WristShot = z.infer<typeof WristShotSchema>;
 
 /** WristService — @golf/wrist public API. Peer to MonitorService; EventEmitter
     style. The store correlates `swing` events to launch-monitor shots by arrival
-    time (±1.5 s nearest-neighbour). */
+    time (±1.5 s nearest-neighbour); `hold`/`phase` drive live drill feedback. */
 export interface WristServiceEvents {
   device: (d: WristDevice) => void;
   connection: (s: z.infer<typeof WristConnectionState>) => void;
   battery: (percent: number, millivolts: number) => void;
   swing: (shot: WristShot) => void;
+  hold: (h: WristHold) => void;
+  phase: (p: WristPhaseEvent) => void;
   sample: (s: WristSample) => void;
   error: (err: Error) => void;
 }
@@ -119,6 +198,12 @@ export interface WristService {
   connect(deviceId: string): Promise<void>;
   disconnect(): void;
   getState(): z.infer<typeof WristConnectionState>;
+  /** Apply (or clear) anatomical calibration; takes effect immediately on the
+      live stream and on every future connection. */
+  setCalibration(calibration: WristCalibration | null): void;
+  /** Stream the chatty per-record `sample` event (calibration capture / live
+      view). Off by default. */
+  setEmitSamples(enabled: boolean): void;
   on<K extends keyof WristServiceEvents>(e: K, h: WristServiceEvents[K]): void;
   off<K extends keyof WristServiceEvents>(e: K, h: WristServiceEvents[K]): void;
 }

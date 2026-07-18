@@ -68,21 +68,24 @@ export function PracticeDrawer({ open, onClose }: PracticeDrawerProps) {
             <SectionTitle title="Device" />
             <View style={tw`flex-row items-center justify-between`}>
               <ConnectionDot state={connection} />
-              {connection === 'connected' ? (
+              <View style={tw`flex-row items-center gap-2`}>
+                {/* always reachable — the Connect screen manages the wrist
+                    sensor + calibration too, needed even while the Mini is up */}
                 <Button
-                  label="Disconnect"
-                  variant="ghost"
-                  compact
-                  onPress={disconnect}
-                />
-              ) : (
-                <Button
-                  label="Connect"
+                  label={connection === 'connected' ? 'Devices' : 'Connect'}
                   variant="secondary"
                   compact
                   onPress={() => go('/connect')}
                 />
-              )}
+                {connection === 'connected' && (
+                  <Button
+                    label="Disconnect"
+                    variant="ghost"
+                    compact
+                    onPress={disconnect}
+                  />
+                )}
+              </View>
             </View>
 
             <SectionTitle title="Session" />

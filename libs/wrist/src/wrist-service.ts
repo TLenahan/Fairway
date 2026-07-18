@@ -1,4 +1,5 @@
 import {
+  WristCalibration,
   WristConnectionState,
   WristService,
   WristServiceEvents,
@@ -21,7 +22,6 @@ import {
   OP_SERIAL,
   TELEMETRY_MARKER,
 } from './protocol';
-import { relativeQuat } from './quaternion';
 import { SwingDetector, SwingDetectorOptions } from './swing-detector';
 
 type Connection = z.infer<typeof WristConnectionState>;
@@ -33,6 +33,13 @@ export interface WristServiceConfig {
   batteryPollMs?: number;
   /** Emit the (chatty) per-record `sample` event for a live view. Off by default. */
   emitSamples?: boolean;
+  /**
+   * Diagnostic tap on every inbound frame, BEFORE any decode — the seam a raw
+   * capture records through. Deliberately not on the WristService contract:
+   * consumers work in swings, and only the composition root wires a recorder.
+   * Handed the live buffer; a recorder that keeps it must copy.
+   */
+  onRawFrame?: (frame: Uint8Array, tMs: number) => void;
 }
 
 /**
@@ -46,7 +53,9 @@ export class HackMotionWristService implements WristService {
   private readonly transport: WristBleTransport;
   private readonly detectorOptions: SwingDetectorOptions;
   private readonly batteryPollMs: number;
-  private readonly emitSamples: boolean;
+  private emitSamples: boolean;
+  private calibration: WristCalibration | null;
+  private readonly onRawFrame: ((frame: Uint8Array, tMs: number) => void) | null;
 
   private state: Connection = 'disconnected';
   private connection: WristBleConnection | null = null;
@@ -61,6 +70,8 @@ export class HackMotionWristService implements WristService {
     this.detectorOptions = config.detector ?? {};
     this.batteryPollMs = config.batteryPollMs ?? 30000;
     this.emitSamples = config.emitSamples ?? false;
+    this.calibration = config.detector?.calibration ?? null;
+    this.onRawFrame = config.onRawFrame ?? null;
     // Keep the scanning state truthful across radio flips: the transport
     // holds a pending scan through poweredOff and restarts it on ready.
     this.transport.onAvailabilityChange?.((availability) => {
@@ -81,6 +92,15 @@ export class HackMotionWristService implements WristService {
 
   getState(): Connection {
     return this.state;
+  }
+
+  setCalibration(calibration: WristCalibration | null): void {
+    this.calibration = calibration;
+    this.detector?.setCalibration(calibration);
+  }
+
+  setEmitSamples(enabled: boolean): void {
+    this.emitSamples = enabled;
   }
 
   startScan(): void {
@@ -130,8 +150,12 @@ export class HackMotionWristService implements WristService {
       this.connection = connection;
       this.connectedDeviceId = deviceId;
       this.detector = new SwingDetector(
-        (shot) => this.emitter.emit('swing', shot),
-        this.detectorOptions,
+        {
+          onSwing: (shot) => this.emitter.emit('swing', shot),
+          onHold: (hold) => this.emitter.emit('hold', hold),
+          onPhase: (phase) => this.emitter.emit('phase', phase),
+        },
+        { ...this.detectorOptions, calibration: this.calibration },
       );
       connection.onData((data) => this.handleData(data));
       connection.onDisconnect(() => this.handleDisconnect());
@@ -167,13 +191,23 @@ export class HackMotionWristService implements WristService {
 
   private handleData(data: Uint8Array): void {
     if (data.length === 0) return;
+    const arrivalMs = Date.now();
+    if (this.onRawFrame !== null) {
+      // A capture is a debugging aid; it must never take the stream down with
+      // it. Its own failures are its problem, not the golfer's.
+      try {
+        this.onRawFrame(data, arrivalMs);
+      } catch {
+        /* swallow */
+      }
+    }
     if (data[0] === TELEMETRY_MARKER) {
-      const arrivalMs = Date.now();
       for (const record of parseFrame(data)) {
         this.detector?.push({
           tMs: arrivalMs,
           tsa: record.tsA,
-          qRel: relativeQuat(record.qA, record.qB),
+          qA: record.qA,
+          qB: record.qB,
           shock: shockOf(record),
         });
         if (this.emitSamples) {

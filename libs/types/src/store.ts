@@ -6,7 +6,7 @@ import { DrillPlan, DrillRepFeedback, DrillRung } from './drill';
 import { ConnectionState } from './enums';
 import { Environment, Session } from './session';
 import { MeasuredShot, ShotRecord } from './shot';
-import { WristConnectionState, WristDevice } from './wrist';
+import { WristConnectionState, WristDevice, WristHold } from './wrist';
 
 /* ───────────────────────── store (zustand) — shapes only ───────────────────────── */
 export interface ConnectionSlice {
@@ -41,10 +41,19 @@ export interface WristSlice {
   wristConnection: z.infer<typeof WristConnectionState>;
   wristDevice: WristDevice | null;
   wristBatteryPercent: number | null;
+  /** live address-hold progress — the drill's "hold still… GO" countdown;
+      null when nothing is holding or the sensor is disconnected */
+  wristHold: WristHold | null;
+  /** set when the wrist drops UNEXPECTEDLY (BLE/battery), never on a user
+      disconnect — drives the dismissable "HackMotion disconnected" toast so a
+      silent mid-session death can't quietly ruin a capture. Cleared on
+      dismiss or reconnect. */
+  wristAlert: string | null;
   startWristScan(): void;
   stopWristScan(): void;
   connectWrist(deviceId: string): Promise<void>;
   disconnectWrist(): void;
+  dismissWristAlert(): void;
 }
 
 export interface DrillState {

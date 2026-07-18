@@ -17,6 +17,9 @@
       "@golf/data": [
         "../../libs/data/src/index.ts"
       ],
+      "@golf/drill": [
+        "../../libs/drill/src/index.ts"
+      ],
       "@golf/flight-model": [
         "../../libs/flight-model/src/index.ts"
       ],
@@ -31,6 +34,9 @@
       ],
       "@golf/store": [
         "../../libs/store/src/index.ts"
+      ],
+      "@golf/wrist": [
+        "../../libs/wrist/src/index.ts"
       ],
       "@golf/ui": [
         "../../libs/ui/src/index.ts"

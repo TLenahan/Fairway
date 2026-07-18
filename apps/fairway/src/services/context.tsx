@@ -11,6 +11,7 @@ import { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 
 import { SettingsState } from './settings';
+import { WristCaptureRecorder } from './wrist-capture';
 
 /**
  * Composition-root context. Everything is typed by the frozen contracts;
@@ -28,6 +29,8 @@ export interface AppServices {
   analysis: AnalysisService;
   store: FairwayStore;
   settings: StoreApi<SettingsState>;
+  /** raw wrist-frame recorder — ground truth for tuning swing detection */
+  wristCapture: WristCaptureRecorder;
 }
 
 const ServicesContext = createContext<AppServices | null>(null);

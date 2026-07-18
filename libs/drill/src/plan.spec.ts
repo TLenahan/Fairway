@@ -172,7 +172,10 @@ describe('computeDrillPlan — full 3-wedge bag with joined carries', () => {
 });
 
 describe('computeDrillPlan — partial knowledge', () => {
-  it('angle anchor without carries: full ready, partials still wait', () => {
+  it('rehearsal swings (no confirmed ball) never anchor', () => {
+    // Three full-length swings with the right wrist angle but no ball behind
+    // them. A launch monitor confirmed nothing, so they must not become the
+    // target other reps get judged against.
     const plan = computeDrillPlan(
       [wedge('lw', '60°')],
       [
@@ -182,14 +185,44 @@ describe('computeDrillPlan — partial knowledge', () => {
       ],
     );
     const full = rungOf(plan, 'lw', 'full');
-    expect(full.status).toBe('ready');
-    expect(full.targetAngleDeg).toBeCloseTo(76);
-    expect(full.targetCarryM).toBeNull(); // rehearsal swings carry no ball
-    expect(full.carry).toBeNull();
-    expect(full.cue?.beats).toBe(3);
+    expect(full.status).toBe('collecting');
+    expect(full.targetAngleDeg).toBeNull();
+    expect(full.targetCarryM).toBeNull();
+    expect(full.cue).toBeNull();
+    expect(full.repCount).toBe(3); // still shown in the rep tally
     const mid = rungOf(plan, 'lw', 'mid');
     expect(mid.status).toBe('needsFulls');
-    expect(mid.toleranceDeg).toBeCloseTo(6.08); // 8% of the 76° anchor
+    expect(mid.toleranceDeg).toBe(4); // no anchor ⇒ the pre-anchor default
+  });
+
+  it('one confirmed full is not enough — anchor waits for MIN_FULL_SHOTS', () => {
+    // Two rehearsals plus a single real, measured shot. The real shot alone
+    // can't anchor, and the rehearsals can never help it get there.
+    const plan = computeDrillPlan(
+      [wedge('lw', '60°')],
+      [
+        rep('lw', 'full', 74, null),
+        rep('lw', 'full', 76, null),
+        rep('lw', 'full', 78, 64),
+      ],
+    );
+    expect(rungOf(plan, 'lw', 'full').status).toBe('collecting');
+  });
+
+  it('anchors once MIN_FULL_SHOTS real balls land, ignoring rehearsals', () => {
+    const plan = computeDrillPlan(
+      [wedge('lw', '60°')],
+      [
+        rep('lw', 'full', 40, null), // rehearsal — excluded from the median
+        rep('lw', 'full', 74, 63),
+        rep('lw', 'full', 76, 64),
+        rep('lw', 'full', 78, 65),
+      ],
+    );
+    const full = rungOf(plan, 'lw', 'full');
+    expect(full.status).toBe('ready');
+    expect(full.targetAngleDeg).toBeCloseTo(76); // median(74,76,78), not the 40
+    expect(full.targetCarryM).toBeCloseTo(64);
   });
 
   it('a wedge without fulls stays needsFulls while others proceed', () => {
@@ -205,7 +238,7 @@ describe('computeDrillPlan — partial knowledge', () => {
         rep('lw', 'mid', 52, null),
       ],
     );
-    // lw: 2 fulls < MIN_FULL_REPS
+    // lw: 2 confirmed fulls < MIN_FULL_SHOTS
     expect(rungOf(plan, 'lw', 'full').status).toBe('collecting');
     expect(rungOf(plan, 'lw', 'mid').status).toBe('needsFulls');
     expect(rungOf(plan, 'lw', 'mid').repCount).toBe(2);

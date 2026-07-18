@@ -4,6 +4,7 @@ import {
   EnvironmentSchema,
   Handedness,
   SpeedUnit,
+  WristCalibrationSchema,
 } from '@golf/types';
 import Storage from 'expo-sqlite/kv-store';
 import { z } from 'zod';
@@ -32,6 +33,8 @@ export const SettingsSchema = z.object({
   // wedges picked for the distance drill (≤3 club ids); the default keeps
   // pre-existing saved settings parsing after this field was added
   drillWedgeIds: z.array(z.string()).default([]),
+  // wrist anatomical calibration from the flat+raise flow; null = uncalibrated
+  wristCalibration: WristCalibrationSchema.nullable().default(null),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
@@ -45,6 +48,7 @@ export const DEFAULT_SETTINGS: Settings = {
   savedDeviceIp: null,
   tileOrder: [...METRIC_TILE_KEYS],
   drillWedgeIds: [],
+  wristCalibration: null,
 };
 
 const STORAGE_KEY = 'fairway.settings.v1';

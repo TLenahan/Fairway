@@ -1,4 +1,4 @@
-import { MIN_FULL_REPS } from '@golf/drill';
+import { classifyRep, MIN_FULL_SHOTS } from '@golf/drill';
 import {
   Club,
   DEFAULT_TRACER_COLOR,
@@ -7,10 +7,11 @@ import {
   DrillPlan,
   DrillRung,
   DrillRungPlan,
+  WristPhaseEvent,
 } from '@golf/types';
 import { Button, Card, SectionTitle, tw } from '@golf/ui';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { z } from 'zod';
 
@@ -45,6 +46,41 @@ const signedDeg = (deg: number): string => {
   const rounded = Math.round(deg);
   return `${rounded >= 0 ? '+' : ''}${rounded}°`;
 };
+
+/** The protocol prompt: address → hold-still progress → GO. */
+function HoldMeter({
+  hold,
+}: {
+  hold: { heldMs: number; requiredMs: number; armed: boolean } | null;
+}) {
+  if (hold?.armed) {
+    return (
+      <Text style={tw`mt-1 text-base font-bold text-green-700`}>
+        GO — swing with the song
+      </Text>
+    );
+  }
+  if (hold && hold.heldMs > 0) {
+    return (
+      <View style={tw`mt-1`}>
+        <Text style={tw`text-sm text-ink`}>Hold still…</Text>
+        <View style={tw`mt-1 h-1.5 rounded-full bg-green-100`}>
+          <View
+            style={[
+              tw`h-1.5 rounded-full bg-green-700`,
+              { width: pctOf(hold.heldMs / hold.requiredMs) },
+            ]}
+          />
+        </View>
+      </View>
+    );
+  }
+  return (
+    <Text style={tw`mt-1 text-sm text-silver`}>
+      Address the ball and hold still
+    </Text>
+  );
+}
 
 /** RN percent dimension — typed so it satisfies DimensionValue. */
 const pctOf = (fraction: number): `${number}%` =>
@@ -113,7 +149,8 @@ function RungCell({
       </Text>
       {plan.status === 'collecting' && (
         <Text style={tw`mt-1 text-center text-xs text-ink`}>
-          Hit {Math.max(1, MIN_FULL_REPS - plan.repCount)} more full swings
+          Hit {Math.max(1, MIN_FULL_SHOTS - (plan.carry?.n ?? 0))} more full
+          shots
         </Text>
       )}
       {plan.status === 'needsFulls' && (
@@ -230,12 +267,13 @@ function LadderStrip({ plan, unit }: { plan: DrillPlan; unit: Distance }) {
  */
 export default function DrillScreen() {
   const router = useRouter();
-  const { data } = useServices();
+  const { data, wrist } = useServices();
   const drill = useFairwayStore((s) => s.drill);
   const startDrill = useFairwayStore((s) => s.startDrill);
   const endDrill = useFairwayStore((s) => s.endDrill);
   const selectDrillRung = useFairwayStore((s) => s.selectDrillRung);
   const wristConnection = useFairwayStore((s) => s.wristConnection);
+  const wristHold = useFairwayStore((s) => s.wristHold);
   const session = useFairwayStore((s) => s.session);
   const sessionShots = useFairwayStore((s) => s.sessionShots);
   const distanceUnit = useSettings((s) => s.distanceUnit);
@@ -254,14 +292,8 @@ export default function DrillScreen() {
   // back-nav is the only exit — unmount ends the drill
   useEffect(() => endDrill, [endDrill]);
 
-  // the instant sound+haptic verdict; keyed on `at` (a fresh epoch per rep)
-  // so plan recomputes that keep the same lastRep don't replay it
   const lastRep = drill?.lastRep ?? null;
   const lastRepAt = lastRep?.at ?? null;
-  const lastOutcome = lastRep?.outcome ?? null;
-  useEffect(() => {
-    if (lastRepAt !== null && lastOutcome !== null) playOutcome(lastOutcome);
-  }, [lastRepAt, lastOutcome]);
 
   const wedges = useMemo(
     () => clubs.filter((c) => c.category === 'wedge' && !c.archived),
@@ -304,11 +336,12 @@ export default function DrillScreen() {
     }
   };
 
+  // Selecting a rung no longer previews the song — it plays as the GO when
+  // the address hold arms. The card's "Replay cue" button remains a preview.
   const pick = async (clubId: string, rung: DrillRungPlan) => {
     setError(null);
     try {
       await selectDrillRung(clubId, rung.rung);
-      if (rung.cue) playCue(rung.cue);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -321,6 +354,41 @@ export default function DrillScreen() {
     const rungPlan = wedge?.rungs.find((r) => r.rung === rung) ?? null;
     return wedge && rungPlan ? { wedge, rungPlan } : null;
   }, [drill]);
+
+  // The swing protocol: address the ball and hold still; when the hold arms,
+  // the rung's swing song plays — that IS the "go". Rising-edge guard so hold
+  // events and plan recomputes while already armed don't replay the song.
+  const armed = wristHold?.armed ?? false;
+  const activeCellRef = useRef(activeCell);
+  activeCellRef.current = activeCell;
+  const armedRef = useRef(false);
+  useEffect(() => {
+    const rising = armed && !armedRef.current;
+    armedRef.current = armed;
+    const cue = activeCellRef.current?.rungPlan.cue;
+    if (rising && cue) playCue(cue);
+  }, [armed]);
+
+  // Instant verdict AT the top — sounds the moment the detector confirms the
+  // reversal, while the club is still up there. The rep record that follows
+  // at swing end updates the card silently; no double feedback.
+  useEffect(() => {
+    const onPhase = (p: WristPhaseEvent): void => {
+      if (p.phase !== 'top') return;
+      const rungPlan = activeCellRef.current?.rungPlan ?? null;
+      if (!rungPlan) return;
+      const [x, y, z] = p.rotVecFromAddressDeg;
+      playOutcome(
+        classifyRep(
+          Math.hypot(x, y, z),
+          rungPlan.targetAngleDeg,
+          rungPlan.toleranceDeg,
+        ),
+      );
+    };
+    wrist.on('phase', onPhase);
+    return () => wrist.off('phase', onPhase);
+  }, [wrist]);
 
   // last carry: the newest session shot, but only when it landed after the
   // judged swing (drill doesn't own shots — they keep flowing to the session)
@@ -430,6 +498,9 @@ export default function DrillScreen() {
                   />
                 )}
               </View>
+              {wristConnection === 'connected' && (
+                <HoldMeter hold={wristHold} />
+              )}
               {lastRep ? (
                 <>
                   <View style={tw`flex-row items-end gap-2`}>

@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
+import { WristToast } from '@/components/WristToast';
 import { createAppServices } from '@/services/app-services';
 import { AppServices, ServicesProvider } from '@/services/context';
 
@@ -50,6 +51,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="practice" options={{ headerShown: false }} />
         <Stack.Screen name="connect" options={{ title: 'Connect' }} />
+        <Stack.Screen name="calibrate" options={{ title: 'Calibrate' }} />
         <Stack.Screen name="sessions/index" options={{ title: 'Sessions' }} />
         <Stack.Screen name="sessions/[id]" options={{ title: 'Session' }} />
         <Stack.Screen
@@ -59,6 +61,8 @@ export default function RootLayout() {
         <Stack.Screen name="drill" options={{ title: 'Wedge drill' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       </Stack>
+      {/* app-wide overlay — must sit outside <Stack> to float over any screen */}
+      <WristToast />
     </ServicesProvider>
   );
 }

@@ -16,8 +16,7 @@ import {
   DEFAULT_BACKSWING_MS,
   DEFAULT_DOWNSWING_MS,
   DRILL_FLOOR_CARRY_M,
-  MIN_FULL_CARRIES,
-  MIN_FULL_REPS,
+  MIN_FULL_SHOTS,
 } from './constants';
 import { buildCarryLadder, PartialCarries, WedgeFullAnchor } from './ladder';
 
@@ -35,18 +34,22 @@ interface WedgeState {
 
 const wedgeState = (club: Club, reps: DrillRep[]): WedgeState => {
   const clubReps = reps.filter((r) => r.clubId === club.id);
+  // The anchor learns ONLY from full swings a launch monitor confirmed struck
+  // a ball (shotId set by the wrist↔shot join). A practice swing has the same
+  // top angle as a real one but no carry, so admitting it would bias the angle
+  // median while contributing nothing to carry — the two anchors must come
+  // from one population for their ratio (the slope prior) to mean anything.
   const window = clubReps
-    .filter((r) => r.rung === 'full')
+    .filter((r) => r.rung === 'full' && r.shotId !== null && r.carryM !== null)
     .slice(-ANCHOR_WINDOW);
-  const carries = window.flatMap((r) => (r.carryM === null ? [] : [r.carryM]));
+  const ready = window.length >= MIN_FULL_SHOTS;
   return {
     club,
     reps: clubReps,
-    anchorAngleDeg:
-      window.length >= MIN_FULL_REPS
-        ? median(window.map((r) => r.topAngleDeg))
-        : null,
-    anchorCarryM: carries.length >= MIN_FULL_CARRIES ? median(carries) : null,
+    anchorAngleDeg: ready ? median(window.map((r) => r.topAngleDeg)) : null,
+    anchorCarryM: ready
+      ? median(window.flatMap((r) => (r.carryM === null ? [] : [r.carryM])))
+      : null,
     backswingMs:
       window.length > 0
         ? median(window.map((r) => r.backswingMs))
