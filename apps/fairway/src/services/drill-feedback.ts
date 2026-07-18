@@ -1,4 +1,4 @@
-import { DrillCue, DrillOutcome } from '@golf/types';
+import { DrillCue, DrillOutcome, WristService } from '@golf/types';
 import { AudioPlayer, createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 
@@ -90,6 +90,31 @@ export function playOutcome(outcome: DrillOutcome): void {
     case 'calibrating':
       playSound('blip');
       void Haptics.selectionAsync().catch(warn);
+      return;
+  }
+}
+
+/**
+ * On-wrist verdict buzz via the HackMotion's own motor — fires on the
+ * VALIDATED rep (the swing event), never mid-swing: the motor must stay quiet
+ * through the impact window because motor shock on the IMU is uncharacterized
+ * and the chip band validates low-rung strikes by impact shock. Patterns are
+ * distinct by feel through a glove: match one crisp pulse, over two, under
+ * one long. Calibrating reps get nothing — no target, nothing to confirm.
+ */
+export function playRepBuzz(outcome: DrillOutcome, wrist: WristService): void {
+  switch (outcome) {
+    case 'match':
+      wrist.vibrate(150);
+      return;
+    case 'over':
+      wrist.vibrate(150);
+      setTimeout(() => wrist.vibrate(150), 300);
+      return;
+    case 'under':
+      wrist.vibrate(450);
+      return;
+    case 'calibrating':
       return;
   }
 }

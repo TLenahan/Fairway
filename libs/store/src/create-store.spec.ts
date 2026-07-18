@@ -234,6 +234,7 @@ class FakeWrist implements WristService {
   disconnect(): void {}
   setCalibration(): void {}
   setEmitSamples(): void {}
+  vibrate(): void {}
   getState(): 'disconnected' {
     return 'disconnected';
   }

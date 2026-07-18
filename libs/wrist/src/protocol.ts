@@ -26,19 +26,28 @@ export const Q14_SCALE = 1 / 16384;
 export const DEVICE_CLOCK_HZ = 64000;
 
 // identity / status opcodes (reply's first byte === the request byte)
+// Also seen from the vendor app but not sent by us: 0x80/0x83/0x84 reads and
+// 0xa2 00/01 around stream setup; 0xfb arrives unsolicited. See
+// reference/hackmotion-vibrate-capture.md for the capture they came from.
 export const OP_BATTERY = 0x81;
 export const OP_MAC = 0x85;
 export const OP_SERIAL = 0x86;
 export const OP_TOKEN = 0x87;
+
+/**
+ * On-device vibration motor, decoded from a btsnoop capture of the vendor
+ * app's feedback mode (2026-07-18): eight ON/OFF pairs, ON held 0.4–4.2 s and
+ * ended by an explicit OFF, every write acked with `cb 01`. The ON tail reads
+ * as max-duration 10000 ms + intensity 100, but neither byte has been varied
+ * against hardware — replay verbatim (the CMD_START_STREAM rule) and time the
+ * pulse with an explicit OFF.
+ */
+export const OP_VIBRATE = 0xcb;
+export const CMD_VIBRATE_ON = Uint8Array.of(OP_VIBRATE, 0x01, 0x27, 0x10, 0x64);
+export const CMD_VIBRATE_OFF = Uint8Array.of(OP_VIBRATE, 0x00);
 
 /** Start the telemetry stream. Replay verbatim; the 0x7e byte is an opaque
     channel mask we never decoded. */
 export const CMD_START_STREAM = Uint8Array.of(0xa0, 0x01, 0x7e);
 export const CMD_READ_BATTERY = Uint8Array.of(OP_BATTERY);
 export const CMD_READ_SERIAL = Uint8Array.of(OP_SERIAL);
-
-/** Same commands pre-encoded as base64 — react-native-ble-plx speaks base64,
-    not raw bytes, at its characteristic API. */
-export const CMD_START_STREAM_B64 = 'oAF+';
-export const CMD_READ_BATTERY_B64 = 'gQ==';
-export const CMD_READ_SERIAL_B64 = 'hg==';
