@@ -6,7 +6,7 @@
     "apps/*",
     "libs/*"
   ],
-  "packageManager": "yarn@4.11.0",
+  "packageManager": "yarn@4.17.1",
   "engines": {
     "node": ">=22"
   },
