@@ -22,6 +22,34 @@ You are a fresh Claude Code session acting as the reviewer/integrator. Two indep
 - **Never treat practice swings as real shots** — anything ball-dependent keys off a joined launch-monitor shot (`shotId`/label), never off detection alone.
 - **Measured vs computed stays honest** — computed values carry `computed: true`; nothing fabricated presents as measured (no fake zeros for unmeasured fields).
 
+## Owner decisions — BOTH RESOLVED (Tim, 2026-07-18). Not blockers.
+
+The detector agent self-flagged two judgment calls. Tim has ruled on both;
+they are settled — do not re-litigate or block the merge on them.
+
+1. **The chip band's shock gate — APPROVED.** Chips overlap putts and club
+   handling kinematically, so sub-140° strokes are only validated when
+   impact-neighborhood shock ≥ 6000 lsb (measured: ball/turf 7351+, all
+   non-contact ≤ 4682). Framed as an impact-PLAUSIBILITY floor, not a contact
+   claim. Tim accepts this framing against hard rule #1. Keep the framing
+   honest in code comments and UI: it admits a candidate stroke, it never
+   asserts a ball was struck — the launch-monitor join remains the only
+   contact confirmation. Residual known costs, accepted: **air practice chips
+   (no ground contact) are not detected**, and **address-tap shock is
+   untested** (a firm tap at address could plausibly clear 6000 and yield a
+   phantom chip — worth a negatives capture later, not a merge blocker).
+2. **Putts below the detection floor — ACCEPTED.** Putt peaks (87–320°/s) sit
+   under routine club handling (up to 780°/s), so no threshold separates them;
+   the wrist does not detect putts by design and the Mini alone reports them.
+   Tim confirmed putts are out of scope — the wrist work exists to fine-tune
+   full-swing clubs. If putt wrist data is ever wanted, the clean path is a
+   putter-specific profile keyed off the active club category (the app already
+   knows it), NOT a lower global floor.
+
+Verify the claimed numbers yourself rather than trusting the handoff:
+`capture-replay.spec.ts` locks 60/60 recall (39 full/partial + 21 chips) and
+zero false positives — re-run it from inside that worktree.
+
 ## Merge
 
 - Tracks are independent (disjoint libs: `flight-model` vs `wrist`+app). Merge each to `main` separately once it passes; flight first if both are ready (smaller surface). Re-run the touched-lib tests on `main` after each merge.
