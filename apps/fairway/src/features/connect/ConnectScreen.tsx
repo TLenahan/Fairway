@@ -233,6 +233,12 @@ export default function ConnectScreen() {
         {wristConnection === 'connected' && (
           <View style={tw`flex-row gap-2`}>
             <Button
+              label="Buzz"
+              variant="secondary"
+              compact
+              onPress={() => wrist.vibrate(400)}
+            />
+            <Button
               label="Calibrate"
               variant="secondary"
               compact

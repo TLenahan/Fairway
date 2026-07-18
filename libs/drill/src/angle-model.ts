@@ -12,48 +12,55 @@ export interface CarrySample {
   carryM: number;
 }
 
-// The least-squares slope replaces the prior only when the data can support
+// The least-squares slope counts as learned only when the data can support
 // it: enough points, enough angle spread to be identifiable, and a value
 // that isn't a degenerate fit (near-flat, negative, or wildly steep).
-const MIN_LSQ_SAMPLES = 4;
+export const MIN_LSQ_SAMPLES = 4;
 const MIN_ANGLE_SPREAD_DEG = 12;
-const SLOPE_GUARD = [0.3, 3] as const; // accepted band, × prior
+const SLOPE_GUARD = [0.3, 3] as const; // accepted band, × the anchor ratio
 const ANGLE_CLAMP = [0.25, 1.05] as const; // returned angle, × anchor angle
 
 /**
- * The lead-wrist top angle predicted to carry `targetCarryM` with this wedge.
- * Bootstrap prior: carry proportional to top angle through the origin
- * (slope = anchor.carryM / anchor.angleDeg) — crude, but it needs zero
- * partial-swing data and self-corrects as joined reps accumulate. Once the
- * wedge's samples have real spread, the least-squares slope of carry on
- * angle takes over (guarded against degenerate fits). The result is clamped
- * to a sane fraction of the full-swing anchor angle.
+ * The lead-wrist top angle predicted to carry `targetCarryM` with this wedge,
+ * or null while no such prediction has been LEARNED. Targets are never
+ * assumed (the drill's binding rule): only the least-squares slope of carry
+ * on angle over the wedge's joined reps qualifies, and only once it is
+ * identifiable — enough samples, real angle spread, and a slope inside a
+ * sanity band scaled by the anchor's carry/angle ratio (the ratio is a
+ * guard reference, never a target source). Until then the rung calibrates:
+ * the golfer chases the carry number and every joined rep feeds this fit.
+ * A learned result is clamped to a sane fraction of the anchor angle.
  */
 export const targetAngleForCarry = (
   samples: CarrySample[],
   anchor: WedgeAnchor,
   targetCarryM: number,
-): number => {
-  const prior = anchor.carryM / anchor.angleDeg; // m per degree
-  let slope = prior;
+): number | null => {
+  if (samples.length < MIN_LSQ_SAMPLES) return null;
+  const angles = samples.map((s) => s.topAngleDeg).sort((a, b) => a - b);
+  // the spread must survive losing either extreme — otherwise one fat/thin
+  // strike far from the cluster single-handedly sets the slope (a chunked
+  // mid rep would define the "learned" line)
+  const n = angles.length;
+  if (
+    angles[n - 1] - angles[1] < MIN_ANGLE_SPREAD_DEG ||
+    angles[n - 2] - angles[0] < MIN_ANGLE_SPREAD_DEG
+  ) {
+    return null;
+  }
 
-  if (samples.length >= MIN_LSQ_SAMPLES) {
-    const angles = samples.map((s) => s.topAngleDeg);
-    const spread = Math.max(...angles) - Math.min(...angles);
-    if (spread >= MIN_ANGLE_SPREAD_DEG) {
-      const angleMean = mean(angles);
-      const carryMean = mean(samples.map((s) => s.carryM));
-      let num = 0;
-      let den = 0;
-      for (const s of samples) {
-        num += (s.topAngleDeg - angleMean) * (s.carryM - carryMean);
-        den += (s.topAngleDeg - angleMean) * (s.topAngleDeg - angleMean);
-      }
-      const lsq = num / den;
-      if (lsq >= SLOPE_GUARD[0] * prior && lsq <= SLOPE_GUARD[1] * prior) {
-        slope = lsq;
-      }
-    }
+  const angleMean = mean(angles);
+  const carryMean = mean(samples.map((s) => s.carryM));
+  let num = 0;
+  let den = 0;
+  for (const s of samples) {
+    num += (s.topAngleDeg - angleMean) * (s.carryM - carryMean);
+    den += (s.topAngleDeg - angleMean) * (s.topAngleDeg - angleMean);
+  }
+  const slope = num / den;
+  const guardScale = anchor.carryM / anchor.angleDeg; // m per degree
+  if (slope < SLOPE_GUARD[0] * guardScale || slope > SLOPE_GUARD[1] * guardScale) {
+    return null;
   }
 
   const raw = anchor.angleDeg + (targetCarryM - anchor.carryM) / slope;

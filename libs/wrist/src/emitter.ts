@@ -20,7 +20,13 @@ export class TypedEmitter<
 
   emit<K extends keyof Events>(event: K, ...args: Parameters<Events[K]>): void {
     for (const handler of this.handlers.get(event) ?? []) {
-      (handler as (...a: Parameters<Events[K]>) => void)(...args);
+      // one throwing subscriber must not skip its peers or propagate into
+      // the BLE data path that emitted the event
+      try {
+        (handler as (...a: Parameters<Events[K]>) => void)(...args);
+      } catch (err) {
+        console.warn(`wrist ${String(event)} handler failed`, err);
+      }
     }
   }
 }

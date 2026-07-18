@@ -129,6 +129,9 @@ const partialRungPlan = (
   const samples: CarrySample[] = s.reps.flatMap((r) =>
     r.carryM === null ? [] : [{ topAngleDeg: r.topAngleDeg, carryM: r.carryM }],
   );
+  // null until the wedge's angle↔carry fit is identifiable — the rung then
+  // CALIBRATES: the golfer chases the carry number (no angle judging) and
+  // every joined rep feeds the fit that eventually defines the target
   const targetAngleDeg = targetAngleForCarry(
     samples,
     { angleDeg: s.anchorAngleDeg, carryM: s.anchorCarryM },
@@ -136,15 +139,21 @@ const partialRungPlan = (
   );
   return {
     ...base,
-    status: 'ready',
+    status: targetAngleDeg !== null ? 'ready' : 'calibrating',
     targetCarryM,
     targetAngleDeg,
     toleranceDeg: toleranceFor(s.anchorAngleDeg),
     cue: {
       beats: CUE_BEATS[rung],
       // shorter swing, proportionally shorter backswing; downswing time is
-      // near-constant across swing sizes, so it stays unscaled
-      backswingMs: s.backswingMs * (targetAngleDeg / s.anchorAngleDeg),
+      // near-constant across swing sizes, so it stays unscaled. While the
+      // angle target is unlearned the carry fraction paces the song — a
+      // rehearsal prior only, never judged
+      backswingMs:
+        s.backswingMs *
+        (targetAngleDeg !== null
+          ? targetAngleDeg / s.anchorAngleDeg
+          : targetCarryM / s.anchorCarryM),
       downswingMs: s.downswingMs,
     },
   };
@@ -156,7 +165,9 @@ const partialRungPlan = (
  * Full rungs come straight from their anchors; partial carry targets come
  * from ONE global ladder over every wedge that has both anchors (so the nine
  * stock shots ladder together, not per wedge); partial angle targets come
- * from each wedge's angle↔carry model.
+ * from each wedge's angle↔carry model — LEARNED only, so a partial rung
+ * calibrates (chase the carry, no angle judging) until its fit is
+ * identifiable.
  */
 export const computeDrillPlan = (
   wedges: Club[],

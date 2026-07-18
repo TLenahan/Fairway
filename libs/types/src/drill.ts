@@ -34,7 +34,7 @@ export const DrillRepSchema = z.object({
   rung: DrillRungSchema,
   shotId: z.string().nullable(),
   tMs: z.number(), // wrist impact arrival epoch ms
-  topAngleDeg: z.number(), // |top.rotVecDeg| — backswing-length proxy
+  topAngleDeg: z.number(), // |top.rotVecFromAddressDeg| — backswing-length proxy
   topExtensionDeg: z.number().nullable(), // anatomical, only when calibrated
   backswingMs: z.number(), // address→top, feeds the cue tempo
   downswingMs: z.number(), // top→impact
@@ -58,7 +58,9 @@ export interface DrillCue {
 export type DrillRungStatus =
   | 'collecting' // full rung: swing full swings until the anchor exists
   | 'needsFulls' // partial rung: waiting on this wedge's full-swing anchor
-  | 'ready'; // target angle defined — feedback is live
+  | 'calibrating' // partial rung: carry target set, angle target still being
+  //                 LEARNED from joined carries — chase the number, no judging
+  | 'ready'; // target angle learned — angle feedback is live
 
 /** One cell of the 3×3 matrix, fully computed from reps (never persisted). */
 export interface DrillRungPlan {
@@ -67,7 +69,7 @@ export interface DrillRungPlan {
   targetCarryM: number | null;
   targetAngleDeg: number | null;
   toleranceDeg: number;
-  cue: DrillCue | null; // null until the target exists
+  cue: DrillCue | null; // null until a carry target exists to swing toward
   repCount: number;
   /** dispersion over reps that have a joined carry */
   carry: { n: number; meanM: number; sdM: number } | null;

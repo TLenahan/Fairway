@@ -144,6 +144,10 @@ export const WristPhaseEventSchema = z.object({
   tMs: z.number(), // arrival epoch ms of the underlying sample
   rotVecFromAddressDeg: z.tuple([z.number(), z.number(), z.number()]),
   angles: WristAnglesSchema, // anatomical at the instant; nulls uncalibrated
+  /** the detector's unwrapped swing rotation at the event (deg): for `top`
+      the confirmed backswing peak — lets consumers tell a full-band swing
+      (≥ the detector's validation floor) from a chip-band stroke */
+  swingThetaDeg: z.number(),
 });
 export type WristPhaseEvent = z.infer<typeof WristPhaseEventSchema>;
 

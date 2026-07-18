@@ -36,11 +36,18 @@ class Rig {
   private tS = 0;
   private tsa = 0;
   private thetaDeg = 0;
+  private tiltDeg = 0;
 
   constructor(private readonly lag = false) {}
 
   private emit(shock: number): void {
-    const qB = axisAngleToQuat(Z_AXIS, this.thetaDeg * DEG_TO_RAD);
+    // tilt composes on the body side (qB·Rx): swing θ about world Z leaves
+    // gravity-in-body untouched, a tilt change moves it — exactly the split
+    // the hold gate's tilt test keys on
+    const qB = qMul(
+      axisAngleToQuat(Z_AXIS, this.thetaDeg * DEG_TO_RAD),
+      axisAngleToQuat(X_AXIS, this.tiltDeg * DEG_TO_RAD),
+    );
     const qA = this.lag
       ? qMul(qB, axisAngleToQuat(X_AXIS, 20 * DEG_TO_RAD))
       : IDENTITY_Q;
@@ -90,6 +97,20 @@ class Rig {
       this.thetaDeg =
         from + ((targetDeg - from) * (1 - Math.cos((Math.PI * i) / n))) / 2;
       this.emit(shock);
+    }
+    return this;
+  }
+
+  /** Cosine-eased gravity-tilt ramp — the golfer changing posture (walking
+      off to a bench, lifting a phone), orthogonal to swing θ. */
+  tiltTo(targetDeg: number, seconds: number): this {
+    const from = this.tiltDeg;
+    const n = Math.round(seconds / DT_S);
+    for (let i = 1; i <= n; i += 1) {
+      this.step();
+      this.tiltDeg =
+        from + ((targetDeg - from) * (1 - Math.cos((Math.PI * i) / n))) / 2;
+      this.emit(40);
     }
     return this;
   }
@@ -292,6 +313,36 @@ describe('SwingDetector — sequences and calibration', () => {
   it('re-arms once the golfer leaves the finish and re-addresses', () => {
     const rig = new Rig().fullSwing();
     rig.ramp(0, 1.5, 40).still(2.0); // lower the club, settle over the ball
+    const { holds } = run(rig);
+    expect(holds[holds.length - 1]?.armed).toBe(true);
+  });
+
+  it('stillness away from the learned address pose never accrues or arms', () => {
+    // the validated swing teaches the address tilt; wandering off to a bench
+    // pose (60° of gravity tilt) and sitting dead still must stay silent —
+    // this is the swing-stance gate, not the finish latch (the tilt move
+    // clears the latch by leaving the finish pose)
+    const rig = new Rig().fullSwing();
+    rig.tiltTo(60, 0.5).still(4.0);
+    const { swings, holds } = run(rig);
+    expect(swings).toHaveLength(1);
+    const reset = holds.findIndex(
+      (h, i) => h.heldMs === 0 && holds.slice(0, i).some((x) => x.armed),
+    );
+    expect(reset).toBeGreaterThan(0);
+    const tail = holds.slice(reset);
+    expect(tail.some((h) => h.armed)).toBe(false);
+    // only the brief finish settle may have accrued — the far pose never does
+    expect(Math.max(0, ...tail.map((h) => h.heldMs))).toBeLessThan(1500);
+  });
+
+  it('the gate is yaw-invariant: address tilt at any aim direction re-arms', () => {
+    // return from the bench to the address TILT while θ stays at −110 — a
+    // pure world-yaw offset from the taught pose (a re-aim). The hold must
+    // arm without needing a re-teach.
+    const rig = new Rig().fullSwing();
+    rig.tiltTo(60, 0.5).still(2.0); // blocked at the bench
+    rig.tiltTo(0, 0.5).still(2.5); // back to address posture, new aim
     const { holds } = run(rig);
     expect(holds[holds.length - 1]?.armed).toBe(true);
   });

@@ -132,34 +132,26 @@ describe('computeDrillPlan — full 3-wedge bag with joined carries', () => {
     expect(rungOf(plan, 'pw', 'mid').targetCarryM).toBeCloseTo(90.311, 3);
   });
 
-  it('partial angle targets follow the prior slope (3 carries < LSQ minimum)', () => {
-    // prior = 100.6 / 80 = 1.2575 m/deg
+  it('partial angles are NEVER assumed — rungs calibrate until the fit is learned', () => {
+    // 3 full carries with 4° of spread cannot identify the angle↔carry slope,
+    // and no prior may stand in: the rung calibrates on its carry number.
     const mid = rungOf(plan, 'pw', 'mid');
     const low = rungOf(plan, 'pw', 'low');
-    expect(mid.targetAngleDeg).toBeCloseTo(71.818, 3); // 80 − 10.289/1.2575
-    expect(low.targetAngleDeg).toBeCloseTo(55.454, 3); // 80 − 30.867/1.2575
-    expect(mid.status).toBe('ready');
-    expect(low.status).toBe('ready');
+    expect(mid.targetAngleDeg).toBeNull();
+    expect(low.targetAngleDeg).toBeNull();
+    expect(mid.status).toBe('calibrating');
+    expect(low.status).toBe('calibrating');
+    expect(mid.targetCarryM).toBeCloseTo(90.311, 3); // carry target still live
     expect(mid.toleranceDeg).toBeCloseTo(6.4); // tolerance tracks the anchor
   });
 
-  it('per wedge the angle targets ascend low < mid < full', () => {
-    for (const w of plan.wedges) {
-      const [full, mid, low] = w.rungs;
-      expect(low.targetAngleDeg ?? NaN).toBeLessThan(mid.targetAngleDeg ?? NaN);
-      expect(mid.targetAngleDeg ?? NaN).toBeLessThan(
-        full.targetAngleDeg ?? NaN,
-      );
-    }
-  });
-
-  it('partial cues scale the backswing by angle ratio, downswing untouched', () => {
+  it('calibrating cues pace the backswing by carry fraction, downswing untouched', () => {
     const mid = rungOf(plan, 'pw', 'mid');
     const low = rungOf(plan, 'pw', 'low');
     expect(mid.cue?.beats).toBe(2);
     expect(low.cue?.beats).toBe(1);
-    expect(mid.cue?.backswingMs).toBeCloseTo(646.361, 2); // 720 × 71.818/80
-    expect(low.cue?.backswingMs).toBeCloseTo(499.083, 2); // 720 × 55.454/80
+    expect(mid.cue?.backswingMs).toBeCloseTo(646.361, 2); // 720 × 90.311/100.6
+    expect(low.cue?.backswingMs).toBeCloseTo(499.083, 2); // 720 × 69.733/100.6
     expect(mid.cue?.downswingMs).toBe(240);
     expect(low.cue?.downswingMs).toBe(240);
   });
@@ -168,6 +160,49 @@ describe('computeDrillPlan — full 3-wedge bag with joined carries', () => {
     const mid = rungOf(plan, 'pw', 'mid');
     expect(mid.repCount).toBe(0);
     expect(mid.carry).toBeNull();
+  });
+});
+
+describe('computeDrillPlan — learned partial targets', () => {
+  // Carried reps on the line carry = 1.2·angle + 4: three fulls anchor the
+  // wedge (median 80° / 100 m), two carried mid attempts widen the angle
+  // spread to 22° — 5 samples, identifiable fit, slope exactly 1.2.
+  const plan = computeDrillPlan(
+    [wedge('pw', 'PW')],
+    [
+      rep('pw', 'full', 78, 97.6),
+      rep('pw', 'full', 80, 100),
+      rep('pw', 'full', 82, 102.4),
+      rep('pw', 'mid', 60, 76),
+      rep('pw', 'mid', 62, 78.4),
+    ],
+  );
+
+  it('the mid target comes from the learned fit, not any prior', () => {
+    const mid = rungOf(plan, 'pw', 'mid');
+    expect(mid.status).toBe('ready');
+    // ladder mid = (18.288 + 100)/2 = 59.144 → 80 + (59.144 − 100)/1.2
+    expect(mid.targetCarryM).toBeCloseTo(59.144, 3);
+    expect(mid.targetAngleDeg).toBeCloseTo(45.953, 3);
+  });
+
+  it('a learned low target beyond the clamp pins at 25% of the anchor', () => {
+    const low = rungOf(plan, 'pw', 'low');
+    expect(low.status).toBe('ready');
+    // raw 80 + (18.288 − 100)/1.2 ≈ 11.9 → clamped to 0.25 × 80
+    expect(low.targetAngleDeg).toBeCloseTo(20);
+  });
+
+  it('learned targets ascend low < mid < full', () => {
+    const [full, mid, low] = plan.wedges[0].rungs;
+    expect(low.targetAngleDeg ?? NaN).toBeLessThan(mid.targetAngleDeg ?? NaN);
+    expect(mid.targetAngleDeg ?? NaN).toBeLessThan(full.targetAngleDeg ?? NaN);
+  });
+
+  it('ready cues switch to the learned angle ratio', () => {
+    const mid = rungOf(plan, 'pw', 'mid');
+    // 720 × 45.953/80 ≈ 413.58 — no longer the carry fraction (425.8)
+    expect(mid.cue?.backswingMs).toBeCloseTo(413.58, 1);
   });
 });
 

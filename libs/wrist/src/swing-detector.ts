@@ -10,6 +10,7 @@ import {
 import { anatomicalAnglesDeg } from './calibration';
 import { DEVICE_CLOCK_HZ } from './protocol';
 import {
+  gravityTiltDeg,
   markleyAverage,
   qCanonical,
   qConj,
@@ -56,7 +57,13 @@ import {
  * The address hold is a DRILL-MODE layer on top, not a gate: `onHold` streams
  * hold progress (the "hold still… GO" cue) and a qualifying hold stamps
  * addressHeldMs and a clean pre-swing angle snapshot, but detection behaves
- * identically without it. `onPhase` fires at takeaway / top / impact zone /
+ * identically without it. The hold itself is SWING-STANCE gated: stillness
+ * accrues only within `holdPoseDeg` of gravity tilt from the last validated
+ * swing's address (its own `holdAddressQB` memory, taught ONLY by finalize —
+ * never by candidate churn, never shared with detection's `lastAddressQB`),
+ * so sitting, phone-checking, and pauses at the top can't arm the GO cue.
+ * Tilt is yaw-invariant: re-aiming at a new target keeps the hold live; a
+ * re-strapped sensor needs one (uncued) validated swing to re-teach. `onPhase` fires at takeaway / top / impact zone /
  * finish / abort; takeaway / top / impact-zone events emit only once a
  * candidate backswing exceeds emitTakeawayDeg (default 30°), so waggles and
  * fidgeting never spam phase consumers — sub-30° strokes (tiny chips caught
@@ -147,6 +154,12 @@ export interface SwingDetectorOptions {
   followthroughTimeoutMs?: number;
   /** stillness ceiling for the drill-mode hold (deg/s) */
   holdStillDegS?: number;
+  /** hold accrues only within this gravity-tilt of the last VALIDATED
+      swing's address pose (deg) — stillness on a bench, over a phone, or
+      paused at the top must never arm the GO cue. Yaw-invariant, so
+      re-aiming at a new target keeps the hold live; open until the first
+      validated swing teaches the pose */
+  holdPoseDeg?: number;
   /** hold duration that arms the drill GO cue (ms) */
   holdRequiredMs?: number;
   /** hold credit survives this long into the takeaway ramp (ms) */
@@ -217,6 +230,13 @@ const CONFIRM_SURGE_FRAC = 1.2;
 const geodesicDeg = (a: Quat, b: Quat): number =>
   rotationAngle(qMul(qConj(a), b)) * RAD_TO_DEG;
 
+/** Default full-band validation floor (`minTopValidDeg`). Exported so app-
+    edge feedback can band a top the moment its phase event fires — e.g. the
+    drill's top-of-backswing wrist buzz is allowed only when the swing will
+    validate full-band, keeping the motor out of every chip-band shock
+    window. */
+export const FULL_BAND_MIN_TOP_DEG = 140;
+
 export class SwingDetector {
   private readonly opts: Required<Omit<SwingDetectorOptions, 'calibration'>>;
   private readonly handlers: SwingDetectorHandlers;
@@ -259,6 +279,12 @@ export class SwingDetector {
   private lastEmittedArmed = false;
   private postSwingQB: Quat | null = null;
   private lastAddressQB: Quat | null = null;
+  /** the hold gate's OWN pose memory — written only by finalize (a validated
+      swing's address), never by candidate churn, and read only by stepHold.
+      Deliberately separate from lastAddressQB: detection heuristics must stay
+      byte-identical whatever the hold layer does, and beginSwing's learning
+      would let bench fidgeting re-teach a sitting pose as "address". */
+  private holdAddressQB: Quat | null = null;
 
   // in-flight candidate swing
   private qBAddr: Quat = [1, 0, 0, 0];
@@ -324,7 +350,7 @@ export class SwingDetector {
       reversalMarginDeg: options.reversalMarginDeg ?? 10,
       topEpsDeg: options.topEpsDeg ?? 3,
       minTopDeg: options.minTopDeg ?? 15,
-      minTopValidDeg: options.minTopValidDeg ?? 140,
+      minTopValidDeg: options.minTopValidDeg ?? FULL_BAND_MIN_TOP_DEG,
       chipMinTopDeg: options.chipMinTopDeg ?? 15,
       chipEnterDegS: options.chipEnterDegS ?? 45,
       chipMinPeakDegS: options.chipMinPeakDegS ?? 250,
@@ -349,6 +375,7 @@ export class SwingDetector {
       downswingTimeoutMs: options.downswingTimeoutMs ?? 1500,
       followthroughTimeoutMs: options.followthroughTimeoutMs ?? 3000,
       holdStillDegS: options.holdStillDegS ?? 30,
+      holdPoseDeg: options.holdPoseDeg ?? 30,
       holdRequiredMs: options.holdRequiredMs ?? 1500,
       holdGraceMs: options.holdGraceMs ?? 600,
       rearmMinPoseDeg: options.rearmMinPoseDeg ?? 30,
@@ -587,13 +614,15 @@ export class SwingDetector {
     this.prevCandSample = null;
     this.tsaUnwrapped += (hostGapMs / 1000) * this.opts.deviceClockHz;
     this.prevTsaRaw = null; // do not trust the delta across the gap
+    const last = this.prev;
     this.prev = null;
     this.omegaWindow = [];
     this.recent = [];
-    if (this.holdStartTDev !== null) {
+    if (this.holdStartTDev !== null || this.lastEmittedArmed) {
       this.holdStartTDev = null;
-      // the stream is gone; the next sample re-emits fresh hold state
-      this.lastEmittedArmed = false;
+      // un-arm the UI now — a stalled stream must not leave a stale GO up
+      if (last !== null) this.emitHold(last, 0, false, true);
+      else this.lastEmittedArmed = false;
     }
   }
 
@@ -608,7 +637,15 @@ export class SwingDetector {
     ) {
       this.postSwingQB = null;
     }
-    if (p.omega < this.opts.holdStillDegS) {
+    // swing-stance gate: stillness only counts near the last validated
+    // address (gravity tilt — yaw-free, so re-aiming keeps it live). Open
+    // until the first validated swing teaches the pose; a far-pose stillness
+    // (bench, phone, pause at the top) falls through to the grace reset like
+    // any other motion, so it can never accrue or arm
+    const atAddress =
+      this.holdAddressQB === null ||
+      gravityTiltDeg(this.holdAddressQB, p.qB) <= this.opts.holdPoseDeg;
+    if (p.omega < this.opts.holdStillDegS && atAddress) {
       if (this.holdStartTDev === null) this.holdStartTDev = p.tDev;
       const heldMs = (p.tDev - this.holdStartTDev) * 1000;
       this.lastStillTDev = p.tDev;
@@ -804,7 +841,7 @@ export class SwingDetector {
             this.thetaMax >= this.lastTopEmitTheta + o.reversalMarginDeg)
         ) {
           this.lastTopEmitTheta = this.thetaMax;
-          this.emitPhase('top', this.topSample);
+          this.emitPhase('top', this.topSample, this.thetaMax);
         }
       } else if (this.anchorStill) {
         // pre-shot fidget inside a TRUSTED frame: restart the climb in
@@ -1186,6 +1223,7 @@ export class SwingDetector {
     };
     this.postSwingQB = last.qB;
     this.lastAddressQB = this.qBAddr;
+    this.holdAddressQB = this.qBAddr; // a validated swing is the only teacher
     this.lastEmitDev = last.tDev;
     this.emitPhase('finish', last);
     this.handlers.onSwing(shot);
@@ -1277,9 +1315,13 @@ export class SwingDetector {
     });
   }
 
+  /** `thetaDeg` rides along so consumers can band the swing (full vs chip)
+      the moment the event fires; `top` passes the confirmed peak, everything
+      else the live unwrapped angle. */
   private emitPhase(
     phase: WristPhaseEvent['phase'],
     p: Processed | null,
+    thetaDeg = this.theta,
   ): void {
     if (this.handlers.onPhase === undefined || p === null) return;
     const { angles } = this.anglesOf(p.qRel);
@@ -1288,6 +1330,7 @@ export class SwingDetector {
       tMs: p.tMs,
       rotVecFromAddressDeg: this.fromAddressDeg(p.qRel),
       angles,
+      swingThetaDeg: thetaDeg,
     });
   }
 }

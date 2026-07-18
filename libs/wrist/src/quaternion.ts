@@ -74,6 +74,24 @@ export function quatToMatrix(q: Quat): Mat3 {
   ];
 }
 
+/** World-up expressed in the pose's body frame: Rᵀ·ẑ = the third ROW of the
+    body→world matrix — the same convention calibrateFlatRaise verifies on
+    real hardware (its `vertical`). */
+export function bodyUp(q: Quat): Vec3 {
+  const m = quatToMatrix(q);
+  return [m[2][0], m[2][1], m[2][2]];
+}
+
+/** Angle between two poses' gravity directions (deg): a yaw-invariant pose
+    similarity — re-aiming at a new target spins the pose about world-up and
+    never changes it, unlike the full geodesic. */
+export function gravityTiltDeg(a: Quat, b: Quat): number {
+  const ga = bodyUp(a);
+  const gb = bodyUp(b);
+  const dot = ga[0] * gb[0] + ga[1] * gb[1] + ga[2] * gb[2];
+  return Math.acos(Math.min(1, Math.max(-1, dot))) * RAD_TO_DEG;
+}
+
 /** Raw roll/pitch/yaw (deg) — a descriptor, not the gimbal-safe anatomical
     decomposition (that needs calibration.ts). */
 export function quatRpyDeg(q: Quat): [number, number, number] {

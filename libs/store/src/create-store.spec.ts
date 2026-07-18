@@ -650,18 +650,18 @@ describe('createFairwayStore — drill mode', () => {
     expect(full.targetAngleDeg).toBe(80); // median of 76 / 84 / 80
     expect(full.targetCarryM).toBe(150);
     expect(full.carry).toEqual({ n: 3, meanM: 150, sdM: 0 });
-    // 3-point even grid over [floor, 150] → partials at 18.288 and 84.144
+    // 3-point even grid over [floor, 150] → partials at 18.288 and 84.144.
+    // Angle targets are LEARNED, never assumed: three clustered fulls can't
+    // identify the angle↔carry slope, so the partials calibrate on their
+    // carry numbers with no angle target in force.
     expect(mid.rung).toBe('mid');
-    expect(mid.status).toBe('ready');
+    expect(mid.status).toBe('calibrating');
     expect(mid.targetCarryM).toBeCloseTo(84.144, 2);
+    expect(mid.targetAngleDeg).toBeNull();
     expect(low.rung).toBe('low');
-    expect(low.status).toBe('ready');
+    expect(low.status).toBe('calibrating');
     expect(low.targetCarryM).toBeCloseTo(18.288, 2);
-    if (mid.targetAngleDeg === null || low.targetAngleDeg === null) {
-      throw new Error('partial targets missing');
-    }
-    expect(low.targetAngleDeg).toBeLessThan(mid.targetAngleDeg);
-    expect(mid.targetAngleDeg).toBeLessThan(80);
+    expect(low.targetAngleDeg).toBeNull();
 
     // reps persist: restarting the drill rebuilds the plan from the store
     store.getState().endDrill();

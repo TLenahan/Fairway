@@ -182,8 +182,18 @@ floor AND below the chip-band shock floor.
   wall-clock monotonicity. `finish` (and `onSwing`) can trail the impact zone
   by up to ~0.5 s when the finish-reversal path takes the confirm hold.
 - **`addressHeldMs` may be 0** — detection is hold-free. The drill GO cue
-  (`WristHold.armed`) still requires `holdRequiredMs` of stillness away from
-  the finish pose, exactly as before.
+  (`WristHold.armed`) requires `holdRequiredMs` of stillness away from the
+  finish pose AND (since the swing-stance gate, 2026-07-18) within
+  `holdPoseDeg` of gravity tilt of the last VALIDATED swing's address — its
+  own `holdAddressQB` memory, taught only by `finalize`, never shared with
+  detection's `lastAddressQB`. Open until the first validated swing of a
+  connection; yaw-invariant, so re-aiming keeps it live. Stillness on a
+  bench or a pause at the top can no longer accrue or arm.
+- **`swingThetaDeg` rides every phase event** (2026-07-18): the unwrapped
+  swing angle at the event (`top` carries the confirmed peak) so consumers
+  can band full vs chip instantly — the drill's top wrist buzz fires only at
+  ≥ `FULL_BAND_MIN_TOP_DEG` to keep the motor out of chip-band shock
+  windows.
 - **CPU**: the rewind machinery replays ≤ 5 s of buffered samples per retry
   and retries advance strictly forward; pathological shuffle produced ~8
   chained retries (~2k quaternion ops) worst-case in the captures — noise on

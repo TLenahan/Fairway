@@ -17,7 +17,15 @@ import { z } from 'zod';
 
 import { distanceUnitLabel, formatDistance } from '@/lib/format';
 import { useFairwayStore, useServices, useSettings } from '@/services/context';
-import { playCue, playOutcome, playRepBuzz } from '@/services/drill-feedback';
+import {
+  cancelCue,
+  playCue,
+  playOutcome,
+  playRepBuzz,
+  playTopBuzz,
+  preloadFeedback,
+  testFeedback,
+} from '@/services/drill-feedback';
 
 type Distance = z.infer<typeof DistanceUnit>;
 
@@ -31,7 +39,7 @@ const outcomeLabel: Record<DrillOutcome, string> = {
   match: 'Match',
   over: 'Over — backswing too long',
   under: 'Under — backswing too short',
-  calibrating: 'Calibrating',
+  calibrating: 'Learning this shot — fly it to the number',
 };
 
 const outcomeColor: Record<DrillOutcome, string> = {
@@ -161,16 +169,22 @@ function RungCell({
           </Text>
         </>
       )}
-      {plan.status === 'ready' && (
+      {(plan.status === 'ready' || plan.status === 'calibrating') && (
         <>
           <Text style={tw`mt-0.5 text-lg font-bold text-ink`}>
             {carry !== null ? `${carry} ${distanceUnitLabel[unit]}` : '—'}
           </Text>
-          {plan.targetAngleDeg !== null && (
-            <Text style={tw`text-[10px] text-silver`}>
-              θ {Math.round(plan.targetAngleDeg)}° ±
-              {Math.round(plan.toleranceDeg)}°
+          {plan.status === 'calibrating' ? (
+            <Text style={tw`text-center text-[10px] text-sky`}>
+              learning · fly it to the number
             </Text>
+          ) : (
+            plan.targetAngleDeg !== null && (
+              <Text style={tw`text-[10px] text-silver`}>
+                θ {Math.round(plan.targetAngleDeg)}° ±
+                {Math.round(plan.toleranceDeg)}°
+              </Text>
+            )
           )}
           {plan.carry && (
             <Text style={tw`text-[10px] text-silver`}>
@@ -199,7 +213,7 @@ function LadderStrip({ plan, unit }: { plan: DrillPlan; unit: Distance }) {
   for (const wedge of plan.wedges) {
     const color = wedge.club.tracerColor ?? DEFAULT_TRACER_COLOR;
     for (const rung of wedge.rungs) {
-      if (rung.status !== 'ready') continue;
+      if (rung.status !== 'ready' && rung.status !== 'calibrating') continue;
       if (rung.carry) {
         bands.push({
           color,
@@ -289,8 +303,17 @@ export default function DrillScreen() {
     void data.listClubs().then(setClubs);
   }, [data]);
 
-  // back-nav is the only exit — unmount ends the drill
+  // warm the audio stack NOW: cache the WAVs locally and build the players
+  // while the network can still reach Metro — first-swing lazy loading is
+  // exactly when it can't (range WiFi) and a failed load is silent
+  useEffect(() => {
+    void preloadFeedback();
+  }, []);
+
+  // back-nav is the only exit — unmount ends the drill and silences any
+  // cue still mid-song
   useEffect(() => endDrill, [endDrill]);
+  useEffect(() => () => cancelCue(), []);
 
   const lastRep = drill?.lastRep ?? null;
   const lastRepAt = lastRep?.at ?? null;
@@ -356,28 +379,49 @@ export default function DrillScreen() {
   }, [drill]);
 
   // The swing protocol: address the ball and hold still; when the hold arms,
-  // the rung's swing song plays — that IS the "go". Rising-edge guard so hold
-  // events and plan recomputes while already armed don't replay the song.
+  // the rung's swing song plays — that IS the "go". Keyed on the armed edge
+  // AND the active cell: a hold that armed before the rung was tapped (or a
+  // rung switched mid-hold) must still get its song, while hold re-emissions
+  // and plan recomputes for the same armed cell must not replay it.
   const armed = wristHold?.armed ?? false;
+  const activeKey = drill?.active
+    ? `${drill.active.clubId}:${drill.active.rung}`
+    : null;
   const activeCellRef = useRef(activeCell);
   activeCellRef.current = activeCell;
-  const armedRef = useRef(false);
+  const lastCuedKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    const rising = armed && !armedRef.current;
-    armedRef.current = armed;
+    if (!armed) {
+      lastCuedKeyRef.current = null;
+      return;
+    }
     const cue = activeCellRef.current?.rungPlan.cue;
-    if (rising && cue) playCue(cue);
-  }, [armed]);
+    if (cue && lastCuedKeyRef.current !== activeKey) {
+      lastCuedKeyRef.current = activeKey;
+      playCue(cue);
+    }
+  }, [armed, activeKey]);
 
   // Instant verdict AT the top — sounds the moment the detector confirms the
-  // reversal, while the club is still up there. The rep record that follows
-  // at swing end updates the card silently; no double feedback.
+  // reversal, while the club is still up there, plus the on-wrist top buzz
+  // (full-band swings only — see playTopBuzz). The rep record that follows
+  // at swing end updates the card silently; no double feedback. Tiny chips
+  // never emit a top phase (sub-30° takeaway), so verdictPlayedRef lets the
+  // rep effect below sound theirs at swing end instead.
+  const verdictPlayedRef = useRef(false);
   useEffect(() => {
     const onPhase = (p: WristPhaseEvent): void => {
+      if (p.phase === 'aborted') {
+        // the candidate never became a rep — its verdict must not suppress
+        // the next real one
+        verdictPlayedRef.current = false;
+        return;
+      }
       if (p.phase !== 'top') return;
       const rungPlan = activeCellRef.current?.rungPlan ?? null;
       if (!rungPlan) return;
       const [x, y, z] = p.rotVecFromAddressDeg;
+      verdictPlayedRef.current = true;
       playOutcome(
         classifyRep(
           Math.hypot(x, y, z),
@@ -385,21 +429,23 @@ export default function DrillScreen() {
           rungPlan.toleranceDeg,
         ),
       );
+      playTopBuzz(p.swingThetaDeg, wrist);
     };
     wrist.on('phase', onPhase);
     return () => wrist.off('phase', onPhase);
   }, [wrist]);
 
-  // On-wrist buzz on the validated rep — deliberately NOT at the phase top
-  // like the audio verdict: the sensor's motor must stay quiet through the
-  // impact window (motor shock vs the chip band's gate is uncharacterized),
-  // and reps can't double-fire the way re-announced tops can. Keyed on the
-  // rep's `at` so plan recomputes don't retrigger.
+  // On the validated rep: the wrist verdict buzz (motor quiet through the
+  // impact window — chip-band shock gate), plus the audio verdict for reps
+  // whose swing was too small to have announced a top. Keyed on the rep's
+  // `at` so plan recomputes don't retrigger.
   const lastRepRef = useRef(lastRep);
   lastRepRef.current = lastRep;
   useEffect(() => {
     const rep = lastRepRef.current;
     if (rep === null || lastRepAt === null) return;
+    if (!verdictPlayedRef.current) playOutcome(rep.outcome);
+    verdictPlayedRef.current = false;
     playRepBuzz(rep.outcome, wrist);
   }, [lastRepAt, wrist]);
 
@@ -471,6 +517,13 @@ export default function DrillScreen() {
               loading={busy}
               disabled={chosenIds.length === 0}
               onPress={() => void start()}
+            />
+          </View>
+          <View style={tw`mt-2`}>
+            <Button
+              label="Test sound & haptics"
+              variant="ghost"
+              onPress={() => testFeedback(wrist)}
             />
           </View>
         </>
