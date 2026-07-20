@@ -43,7 +43,13 @@ export interface AnalysisPayload {
   baselines: Baseline[];
 }
 
-export const COMPUTED_METRIC_KEYS = ['carryM', 'totalM', 'apexM', 'offlineM'];
+export const COMPUTED_METRIC_KEYS = [
+  'carryM',
+  'totalM',
+  'apexM',
+  'offlineM',
+  'curveM',
+];
 
 /** Baselines for the club categories present in the summary — never invented. */
 function relevantBaselines(

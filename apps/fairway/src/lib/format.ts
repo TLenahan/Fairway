@@ -33,6 +33,22 @@ export function formatDistance(
   return value.toFixed(decimals);
 }
 
+/**
+ * Signed lateral distance (offlineM/curveM, + = right) → "8R" / "4L"; a value
+ * that rounds to zero reads "0" with no letter. Unit follows formatDistance.
+ */
+export function formatLateral(
+  m: number | null,
+  unit: Distance,
+  decimals = 0,
+): string | null {
+  if (m === null) return null;
+  const value = unit === 'yards' ? m * M_TO_YD : m;
+  const magnitude = Math.abs(value).toFixed(decimals);
+  if (Number(magnitude) === 0) return '0';
+  return `${magnitude}${value < 0 ? 'L' : 'R'}`;
+}
+
 export function formatDegrees(deg: number | null, decimals = 1): string | null {
   if (deg === null) return null;
   return `${deg.toFixed(decimals)}°`;

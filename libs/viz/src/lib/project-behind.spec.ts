@@ -78,6 +78,7 @@ const flight = (over: Partial<FlightResult> = {}): FlightResult => {
     descentDeg: 44,
     flightTimeS: 10,
     offlineM: 0,
+    curveM: 0,
     landing: { x: 150, z: 0 },
     rolloutM: 8,
     computed: true,

@@ -232,6 +232,7 @@ export function createDataStore(
         flight?.descentDeg ?? null,
         flight?.flightTimeS ?? null,
         flight?.offlineM ?? null,
+        flight?.curveM ?? null,
         flight?.rolloutM ?? null,
         flight?.landing.x ?? null,
         flight?.landing.z ?? null,
@@ -253,8 +254,9 @@ export function createDataStore(
              assurance_faceimpact_vertical,
              smash_factor, shot_img_path,
              carry_m, total_m, apex_m, descent_deg, flight_time_s, offline_m,
-             rollout_m, landing_x_m, landing_z_m, flight_path_json, raw_json
-           ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             curve_m, rollout_m, landing_x_m, landing_z_m, flight_path_json,
+             raw_json
+           ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           params,
         );
       } catch (err) {
@@ -277,8 +279,8 @@ export function createDataStore(
     async attachFlight(shotId, flight: FlightResult) {
       await db.runAsync(
         `UPDATE shots SET carry_m = ?, total_m = ?, apex_m = ?, descent_deg = ?,
-           flight_time_s = ?, offline_m = ?, rollout_m = ?, landing_x_m = ?,
-           landing_z_m = ?, flight_path_json = ? WHERE id = ?`,
+           flight_time_s = ?, offline_m = ?, curve_m = ?, rollout_m = ?,
+           landing_x_m = ?, landing_z_m = ?, flight_path_json = ? WHERE id = ?`,
         [
           flight.carryM,
           flight.totalM,
@@ -286,6 +288,7 @@ export function createDataStore(
           flight.descentDeg,
           flight.flightTimeS,
           flight.offlineM,
+          flight.curveM,
           flight.rolloutM,
           flight.landing.x,
           flight.landing.z,

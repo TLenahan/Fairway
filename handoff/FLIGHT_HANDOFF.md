@@ -17,6 +17,14 @@ committed under `libs/flight-model/src/fixtures/` for offline reproducibility.
 | descent angle | +1.33° mean / 3.03° RMS | **−0.46° mean / 2.12° RMS** |
 | flight time | +0.18 s mean | **+0.02 s mean** |
 
+**Lateral validation (2026-07-19, full 7,938 shots, no lateral-specific fit):**
+side (L/R of target, `offlineM`) bias **−0.15 yd / RMS 1.94 yd**; curve (L/R of
+start line, `curveM`) bias **−0.11 yd / RMS 1.82 yd**; median |error| ~0.5 yd,
+p90 ~2 yd. Model/actual curve slope 0.97 — the model under-curves by ~3%
+(≈0.5 yd on a 15 yd curve, −0.46 yd bias even in the 30+ yd bin), well inside
+noise, so no lateral knob was added. The 2026-07-17 carry/apex fit generalizes
+laterally; bounds live in `aero-calibration.spec.ts`.
+
 **Coefficients (fit dims only; everything inside literature bounds):**
 
 | param | before | after | bound source |

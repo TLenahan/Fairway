@@ -121,6 +121,7 @@ export const FlightResultSchema = z.object({
   path: z.array(FlightPathPointSchema),
   carryM: z.number(), totalM: z.number(), apexM: z.number(),
   descentDeg: z.number(), flightTimeS: z.number(), offlineM: z.number(),
+  curveM: z.number(), // lateral deviation from the START line (+ = right); offlineM is vs the target line
   landing: z.object({ x: z.number(), z: z.number() }),
   rolloutM: z.number(),
   computed: z.literal(true),

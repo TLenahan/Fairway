@@ -54,6 +54,7 @@ const IDLE_SCENE: FlightResult = {
   descentDeg: 0,
   flightTimeS: 0,
   offlineM: 0,
+  curveM: 0,
   landing: { x: 0, z: 0 },
   rolloutM: 0,
   computed: true,

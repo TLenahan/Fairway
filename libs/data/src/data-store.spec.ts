@@ -58,6 +58,7 @@ const flight: FlightResult = {
   descentDeg: 46.2,
   flightTimeS: 5.4,
   offlineM: -3.1,
+  curveM: -1.2,
   landing: { x: 132.4, z: -3.1 },
   rolloutM: 6.5,
   computed: true,

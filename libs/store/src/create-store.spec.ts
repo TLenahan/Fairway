@@ -25,6 +25,7 @@ const flightFixture: FlightResult = {
   descentDeg: 45,
   flightTimeS: 5.5,
   offlineM: -2,
+  curveM: -1,
   landing: { x: 150, z: -2 },
   rolloutM: 5,
   computed: true,

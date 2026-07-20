@@ -27,6 +27,7 @@ import {
   distanceUnitLabel,
   formatDegrees,
   formatDistance,
+  formatLateral,
   formatSmash,
   formatSpeed,
   speedUnitLabel,
@@ -282,7 +283,7 @@ export default function SessionReviewScreen() {
             {shot.flight
               ? `${formatDistance(shot.flight.carryM, distanceUnit)} ${
                   distanceUnitLabel[distanceUnit]
-                } est.`
+                } · ${formatLateral(shot.flight.offlineM, distanceUnit)} est.`
               : '—'}
           </Text>
           <Button

@@ -105,10 +105,10 @@ Spin bleeds off in flight; ignoring it overstates carry and curve. Apply exponen
   ```
   Build ω0 from backspin/sidespin/rollspin (rpm → rad/s = rpm·2π/60), oriented so backspin lifts and sidespin curves toward the low side of the axis; document the sign convention and keep it consistent with the axes in §1. Roll (rifle) spin has a secondary effect; include it in ω.
 - **Integrator:** classic **RK4**, fixed step `dt = 0.001 s` (1 ms). Recompute forces each stage. Append a `FlightPathPoint {t,x,y,z}` per step (or decimate to keep `path` a reasonable length, e.g. every ~5–10 ms, while integrating at 1 ms).
-- **Termination:** stop when `y ≤ 0` after apex. Interpolate the exact ground-crossing for `carryM` and `landing`, and compute `descentDeg = atan2(-vy, sqrt(vx²+vz²))` at impact, `apexM = max(y)`, `flightTimeS = t_land`, `offlineM = z_land`.
+- **Termination:** stop when `y ≤ 0` after apex. Interpolate the exact ground-crossing for `carryM` and `landing`, and compute `descentDeg = atan2(-vy, sqrt(vx²+vz²))` at impact, `apexM = max(y)`, `flightTimeS = t_land`, `offlineM = z_land`, `curveM = z_land·cos(hla) − x_land·sin(hla)` (signed perpendicular deviation from the start line — the air movement, + = right; validated vs TrackMan carrySide, bias −0.1 yd / RMS 1.8 yd).
 - **Rollout → `totalM`:** a simple, documented model is sufficient for v1 — e.g. rollout as a function of descent angle and landing speed (steeper/softer = less roll), or a category-based fraction. Keep it isolated and clearly approximate; `total = carry + rollout`. (A full bounce/turf-interaction model is out of scope.)
 
-Output the full `FlightResult` (path + carryM, totalM, apexM, descentDeg, flightTimeS, offlineM, landing, rolloutM, `computed: true`).
+Output the full `FlightResult` (path + carryM, totalM, apexM, descentDeg, flightTimeS, offlineM, curveM, landing, rolloutM, `computed: true`).
 
 ---
 

@@ -118,6 +118,37 @@ describe('simulate — shot shape and curvature', () => {
     );
   });
 
+  it('curveM isolates air movement from start direction', () => {
+    // straight pull: offline is all HLA, curve ≈ 0
+    const pull = simulate(launch({ launchDirectionDeg: -3 }), seaLevel);
+    expect(pull.offlineM).toBeLessThan(-5);
+    expect(Math.abs(pull.curveM)).toBeLessThan(0.5);
+    // fade from a straight start: curve ≈ offline
+    const fade = simulate(launch({ sidespinRpm: 1500 }), seaLevel);
+    expect(fade.curveM).toBeGreaterThan(2);
+    expect(fade.curveM).toBeCloseTo(fade.offlineM, 1);
+    // pull-fade: starts left, curves right — signs disagree, and the same
+    // sidespin bends the ball the same amount as from a straight start
+    // (curve is measured against the start line, so it's HLA-independent)
+    const pullFade = simulate(
+      launch({ launchDirectionDeg: -4, sidespinRpm: 2000 }),
+      seaLevel,
+    );
+    expect(pullFade.curveM).toBeGreaterThan(2);
+    expect(pullFade.offlineM).toBeLessThan(pullFade.curveM);
+    const fadeSame = simulate(launch({ sidespinRpm: 2000 }), seaLevel);
+    expect(pullFade.curveM).toBeCloseTo(fadeSame.curveM, 0);
+    // reassembly into the target frame: offline = along·sin + curve·cos,
+    // where along = the start-line component of the landing point
+    const hlaRad = (-4 * Math.PI) / 180;
+    const along =
+      pullFade.landing.x * Math.cos(hlaRad) +
+      pullFade.landing.z * Math.sin(hlaRad);
+    expect(
+      along * Math.sin(hlaRad) + pullFade.curveM * Math.cos(hlaRad),
+    ).toBeCloseTo(pullFade.offlineM, 6);
+  });
+
   it('carry is the flight-line distance, not the target-line projection', () => {
     const straight = simulate(launch({}), seaLevel);
     const pulled = simulate(launch({ launchDirectionDeg: -17.5 }), seaLevel);

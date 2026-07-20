@@ -160,6 +160,35 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 6,
+    async up(db) {
+      // curve: signed lateral deviation of the landing point from the START
+      // line (the HLA ray), + = right — offline_m's sibling in the start-line
+      // frame. Backfilled in JS from columns already on the row (SQLite math
+      // functions aren't guaranteed on-device).
+      await db.execAsync('ALTER TABLE shots ADD COLUMN curve_m REAL');
+      const rows = await db.getAllAsync<{
+        id: string;
+        landing_x_m: number;
+        landing_z_m: number;
+        launch_direction_deg: number;
+      }>(
+        `SELECT id, landing_x_m, landing_z_m, launch_direction_deg
+           FROM shots WHERE carry_m IS NOT NULL`,
+      );
+      for (const row of rows) {
+        const hlaRad = (row.launch_direction_deg * Math.PI) / 180;
+        const curveM =
+          row.landing_z_m * Math.cos(hlaRad) -
+          row.landing_x_m * Math.sin(hlaRad);
+        await db.runAsync('UPDATE shots SET curve_m = ? WHERE id = ?', [
+          curveM,
+          row.id,
+        ]);
+      }
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {
