@@ -67,6 +67,11 @@ export const simulate = (
   // what golfers and launch monitors mean by carry), NOT the target-line
   // projection. offlineM/landing keep the target-line frame for the views.
   const carry = Math.hypot(landing.x, landing.z);
+  // curve = signed perpendicular distance from the landing point to the start
+  // line (the HLA ray), + = right. Splits offlineM into start direction vs
+  // movement in the air: offline ≈ carry·sin(hla) + curve·cos(hla).
+  const curve =
+    landing.z * Math.cos(hlaRad) - landing.x * Math.sin(hlaRad);
   const rollout = rolloutM(
     horizontalSpeed,
     descentDeg,
@@ -83,6 +88,7 @@ export const simulate = (
     descentDeg,
     flightTimeS: landing.tS,
     offlineM: landing.z,
+    curveM: curve,
     landing: { x: landing.x, z: landing.z },
     rolloutM: rollout,
     computed: true,

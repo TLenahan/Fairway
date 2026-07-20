@@ -14,6 +14,8 @@ export const METRIC_TILE_KEYS = [
   'backspin',
   'sidespin',
   'apex',
+  'side',
+  'curve',
   'path',
   'attack',
 ] as const;

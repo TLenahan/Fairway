@@ -36,6 +36,7 @@ const flight = (over: Partial<FlightResult> = {}): FlightResult => {
     descentDeg: 44,
     flightTimeS: 10,
     offlineM: 0,
+    curveM: 0,
     landing: { x: 150, z: 0 },
     rolloutM: 8,
     computed: true,
@@ -121,11 +122,19 @@ describe('projectTopDown', () => {
 });
 
 describe('classifyShotShape', () => {
-  const shape = (offlineM: number, hla: number, carryM = 150) =>
-    classifyShotShape(
-      flight({ offlineM, carryM, landing: { x: carryM, z: offlineM } }),
+  // curveM as simulate() computes it: perpendicular deviation from the HLA ray
+  const shape = (offlineM: number, hla: number, carryM = 150) => {
+    const hlaRad = (hla * Math.PI) / 180;
+    return classifyShotShape(
+      flight({
+        offlineM,
+        carryM,
+        curveM: offlineM * Math.cos(hlaRad) - carryM * Math.sin(hlaRad),
+        landing: { x: carryM, z: offlineM },
+      }),
       { launchDirectionDeg: hla },
     );
+  };
 
   it('classifies the seven shapes', () => {
     expect(shape(0, 0)).toBe('straight');

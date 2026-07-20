@@ -6,8 +6,9 @@ export type ShotShape =
 /**
  * Classification thresholds (documented judgment calls, world coords: +z =
  * right of the target line, handedness-neutral):
- * - curvature = lateral finish − straight-line HLA projection; |curve| < 3 m
- *   counts as no curve (measurement noise / tiny gear effect).
+ * - curvature = `curveM`, the flight model's lateral deviation from the start
+ *   line; |curve| < 3 m counts as no curve (measurement noise / tiny gear
+ *   effect).
  * - with no curve: |HLA| ≤ 2° = straight, left of that = pull, right = push.
  * - with curve: right curve = fade, left = draw; |curve| > 12 m upgrades to
  *   slice / hook.
@@ -26,9 +27,7 @@ export function classifyShotShape(
   result: FlightResult,
   launch: ShotShapeInput,
 ): ShotShape {
-  const hlaRad = (launch.launchDirectionDeg * Math.PI) / 180;
-  const straightLineFinish = Math.tan(hlaRad) * result.carryM;
-  const curve = result.offlineM - straightLineFinish;
+  const curve = result.curveM;
 
   if (Math.abs(curve) < NO_CURVE_THRESHOLD_M) {
     if (Math.abs(launch.launchDirectionDeg) <= STRAIGHT_HLA_THRESHOLD_DEG) {

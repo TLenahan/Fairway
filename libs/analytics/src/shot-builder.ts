@@ -31,6 +31,7 @@ export const buildFlight = (
   descentDeg: 44,
   flightTimeS: 5.6,
   offlineM: 0,
+  curveM: 0,
   landing: { x: 150, z: 0 },
   rolloutM: 8,
   computed: true,

@@ -6,9 +6,9 @@ import { ShotRecord } from '@golf/types';
  * - Measured keys come straight from the sensor (`shot.measured`); club-delivery
  *   metrics are null when their assurance was 0 (the null rule) and are simply
  *   absent from the stat for that shot.
- * - Computed keys (`carryM`, `totalM`, `apexM`, `offlineM`) are taken ONLY from
- *   `shot.flight` when the flight model has run — they are estimates and are
- *   never invented here.
+ * - Computed keys (`carryM`, `totalM`, `apexM`, `offlineM`, `curveM`) are taken
+ *   ONLY from `shot.flight` when the flight model has run — they are estimates
+ *   and are never invented here.
  */
 export const METRIC_KEYS = [
   'ballSpeedMs',
@@ -26,6 +26,7 @@ export const METRIC_KEYS = [
   'totalM',
   'apexM',
   'offlineM',
+  'curveM',
 ] as const;
 
 export type MetricKey = (typeof METRIC_KEYS)[number];
@@ -75,5 +76,7 @@ export const metricValue = (
       return shot.flight === null ? null : shot.flight.apexM;
     case 'offlineM':
       return shot.flight === null ? null : shot.flight.offlineM;
+    case 'curveM':
+      return shot.flight === null ? null : shot.flight.curveM;
   }
 };

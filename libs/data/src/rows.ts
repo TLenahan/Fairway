@@ -120,6 +120,7 @@ export interface ShotRow {
   descent_deg: number | null;
   flight_time_s: number | null;
   offline_m: number | null;
+  curve_m: number | null;
   rollout_m: number | null;
   landing_x_m: number | null;
   landing_z_m: number | null;
@@ -188,6 +189,7 @@ export function mapShotRow(row: ShotRow): ShotRecord {
             descentDeg: row.descent_deg,
             flightTimeS: row.flight_time_s,
             offlineM: row.offline_m,
+            curveM: row.curve_m,
             landing: { x: row.landing_x_m, z: row.landing_z_m },
             rolloutM: row.rollout_m,
             computed: true,

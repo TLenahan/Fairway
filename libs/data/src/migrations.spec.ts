@@ -1,11 +1,11 @@
-import { runMigrations } from './migrations';
+import { MIGRATIONS, runMigrations } from './migrations';
 import { openTestDatabase } from './testing/better-sqlite3-adapter';
 
 describe('migration harness', () => {
   it('migrates a fresh database to the latest version', async () => {
     const db = openTestDatabase();
     const version = await runMigrations(db);
-    expect(version).toBe(5);
+    expect(version).toBe(6);
 
     const tables = await db.getAllAsync<{ name: string }>(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -26,7 +26,52 @@ describe('migration harness', () => {
   it('is idempotent — re-running applies nothing', async () => {
     const db = openTestDatabase();
     await runMigrations(db);
-    await expect(runMigrations(db)).resolves.toBe(5);
+    await expect(runMigrations(db)).resolves.toBe(6);
+    db.close();
+  });
+
+  it('v6 backfills curve_m for shots that already have a flight', async () => {
+    const db = openTestDatabase();
+    for (const migration of MIGRATIONS.slice(0, 5)) {
+      await migration.up(db);
+    }
+    await db.execAsync('PRAGMA user_version = 5');
+    await db.runAsync(
+      `INSERT INTO clubs (id, name, category, sensor_mode, archived, created_at)
+       VALUES ('c1', 'GW', 'wedge', 'iron', 0, 1)`,
+    );
+    await db.runAsync(
+      `INSERT INTO sessions (id, started_at, altitude_m, created_at)
+       VALUES ('s1', 1, 1849, 1)`,
+    );
+    // pull (HLA −17.5°) that also drifted a touch further left in the air
+    await db.runAsync(
+      `INSERT INTO shots (
+         id, session_id, club_id, shot_guid, captured_at, impact_timestamp,
+         discarded, handedness,
+         ball_speed_ms, launch_angle_deg, launch_direction_deg,
+         backspin_rpm, sidespin_rpm, rollspin_rpm,
+         assurance_spin, assurance_clubspeed, assurance_clubpath,
+         assurance_faceangle, assurance_attackangle, assurance_loftangle,
+         assurance_lieangle, assurance_faceimpact_lateral,
+         assurance_faceimpact_vertical,
+         carry_m, landing_x_m, landing_z_m,
+         raw_json
+       ) VALUES (
+         'x1', 's1', 'c1', 'g-1', 2, 3, 0, 'right',
+         29.8, 22.8, -17.5, 6960, -224, 0,
+         97, 95, 95, 0, 95, 0, 0, 0, 0,
+         63.9, 60, -22,
+         '{}'
+       )`,
+    );
+    await expect(runMigrations(db)).resolves.toBe(6);
+    const row = await db.getFirstAsync<{ curve_m: number | null }>(
+      "SELECT curve_m FROM shots WHERE id = 'x1'",
+    );
+    const hlaRad = (-17.5 * Math.PI) / 180;
+    const expected = -22 * Math.cos(hlaRad) - 60 * Math.sin(hlaRad);
+    expect(row?.curve_m).toBeCloseTo(expected, 9);
     db.close();
   });
 

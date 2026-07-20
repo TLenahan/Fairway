@@ -192,7 +192,7 @@ Design the schema to make per-club and per-session queries for stats/analysis st
 - **shots**: `id`, `session_id` (fk), `club_id` (fk), `shot_guid` (unique — dedup key), `captured_at`, `impact_timestamp` (raw device value), `discarded` (bool),
   - MEASURED (SI floats, nullable when assurance 0): `ball_speed_ms`, `launch_angle_deg`, `launch_direction_deg`, `backspin_rpm`, `sidespin_rpm`, `rollspin_rpm`, `club_speed_ms`, `club_path_deg`, `face_angle_deg`, `attack_angle_deg`, `loft_deg`, `lie_deg`, `face_impact_h_mm`, `face_impact_v_mm`,
   - assurance columns (ints) for each club metric so the null-reason is auditable,
-  - COMPUTED (from FlightModel, nullable): `carry_m`, `total_m`, `apex_m`, `descent_deg`, `flight_time_s`, `offline_m`,
+  - COMPUTED (from FlightModel, nullable): `carry_m`, `total_m`, `apex_m`, `descent_deg`, `flight_time_s`, `offline_m`, `curve_m`,
   - `raw_json` (the full decoded envelope, for forward-compat / debugging).
 - **analyses**: `id`, `session_id` (fk), `scope` (session/club/trend), `model`, `created_at`, `content` (the returned text), `input_summary_json` (what we sent).
 
@@ -242,7 +242,8 @@ Isolated, pure, unit-tested TypeScript module. No UI, no DB.
   interface FlightResult {
     path: Array<{ t: number; x: number; y: number; z: number }>; // x=downrange, y=height, z=lateral(+right); meters
     carry_m: number; total_m: number; apex_m: number;
-    descent_deg: number; flightTime_s: number; offline_m: number; // signed lateral finish
+    descent_deg: number; flightTime_s: number; offline_m: number; // signed lateral finish vs TARGET line
+    curve_m: number; // signed lateral deviation vs START line (movement in the air, + = right)
     landing: { x: number; z: number }; rollout_m: number;
     computed: true; // never conf<em>use with measured
   }

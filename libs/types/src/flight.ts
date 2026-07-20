@@ -31,6 +31,7 @@ export const FlightResultSchema = z.object({
   descentDeg: z.number(),
   flightTimeS: z.number(),
   offlineM: z.number(),
+  curveM: z.number(),
   landing: z.object({ x: z.number(), z: z.number() }),
   rolloutM: z.number(),
   computed: z.literal(true),

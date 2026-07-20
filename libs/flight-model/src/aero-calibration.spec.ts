@@ -41,16 +41,17 @@ const fixture = (name: string): string =>
 
 describe('aero calibration vs TrackMan dataset (stride sample of 7,938 shots)', () => {
   const lines = fixture('trackman-driver.csv').trim().split('\n');
-  const errs = { carryYd: [] as number[], apexFt: [] as number[], descDeg: [] as number[], timeS: [] as number[] };
+  const errs = { carryYd: [] as number[], apexFt: [] as number[], descDeg: [] as number[], timeS: [] as number[], sideYd: [] as number[], curveYd: [] as number[] };
   for (let i = 1; i < lines.length; i += 16) {
     const c = lines[i].split(',');
+    const hlaDeg = Number(c[2]);
     const spinRpm = Number(c[3]);
     const axisRad = Number(c[4]) * DEG;
     const result = simulate(
       {
         ballSpeedMs: Number(c[0]) / MPH,
         launchAngleDeg: Number(c[1]),
-        launchDirectionDeg: Number(c[2]),
+        launchDirectionDeg: hlaDeg,
         backspinRpm: spinRpm * Math.cos(axisRad),
         sidespinRpm: spinRpm * Math.sin(axisRad),
         rollspinRpm: 0,
@@ -64,6 +65,14 @@ describe('aero calibration vs TrackMan dataset (stride sample of 7,938 shots)', 
     errs.apexFt.push(result.apexM * FT - Number(c[7]));
     errs.descDeg.push(result.descentDeg - Number(c[9]));
     errs.timeS.push(result.flightTimeS - Number(c[10]));
+    // lateral truth: carrySideYd is the target-frame z, carryYd the target-
+    // frame x; curve = both re-projected perpendicular to the start line
+    errs.sideYd.push(result.offlineM * YD - Number(c[6]));
+    const cos = Math.cos(hlaDeg * DEG);
+    const sin = Math.sin(hlaDeg * DEG);
+    errs.curveYd.push(
+      result.curveM * YD - (Number(c[6]) * cos - Number(c[5]) * sin),
+    );
   }
 
   it('carry matches within bias/RMS bounds', () => {
@@ -88,6 +97,21 @@ describe('aero calibration vs TrackMan dataset (stride sample of 7,938 shots)', 
     const s = stats(errs.timeS);
     expect(Math.abs(s.mean)).toBeLessThan(0.06);
     expect(s.rms).toBeLessThan(0.24);
+  });
+
+  // Full-dataset lateral residuals (2026-07-19): side bias −0.15 / RMS 1.94 yd,
+  // curve bias −0.11 / RMS 1.82 yd, model/actual curve slope 0.97. Bounds are
+  // those stats plus headroom for the stride sample's jitter.
+  it('side (L/R of target) matches within bias/RMS bounds', () => {
+    const s = stats(errs.sideYd);
+    expect(Math.abs(s.mean)).toBeLessThan(0.75);
+    expect(s.rms).toBeLessThan(3);
+  });
+
+  it('curve (L/R of start line) matches within bias/RMS bounds', () => {
+    const s = stats(errs.curveYd);
+    expect(Math.abs(s.mean)).toBeLessThan(0.75);
+    expect(s.rms).toBeLessThan(3);
   });
 });
 
