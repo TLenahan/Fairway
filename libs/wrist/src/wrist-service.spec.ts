@@ -125,6 +125,43 @@ describe('HackMotionWristService', () => {
     expect(service.getState()).toBe('disconnected');
   });
 
+  it('attaches a coach result to every swing event', async () => {
+    const transport = new FakeTransport();
+    const service = new HackMotionWristService({
+      transport,
+      batteryPollMs: 1_000_000,
+    });
+    const swings: WristShot[] = [];
+    service.on('swing', (s) => swings.push(s));
+
+    // uncalibrated: the coach result must say so, never guess
+    await service.connect('dev-1');
+    for (const frame of swingFrames()) transport.conn.feed(frame);
+    expect(swings).toHaveLength(1);
+    expect(swings[0].coach).toEqual({
+      status: 'dropped',
+      reason: 'uncalibrated',
+    });
+    service.disconnect();
+
+    // calibrated: the extractor runs — this fixture swings about the
+    // ROTATION axis (ext/dev flat), so the takeaway departs on the rotation
+    // channel and full keyframes extract
+    service.setCalibration({
+      qRef: [1, 0, 0, 0],
+      frame: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+    });
+    await service.connect('dev-1');
+    for (const frame of swingFrames()) transport.conn.feed(frame);
+    expect(swings).toHaveLength(2);
+    expect(swings[1].coach?.status).toBe('ok');
+    service.disconnect();
+  });
+
   it('taps every raw frame, verbatim and pre-decode', async () => {
     const transport = new FakeTransport();
     const raw: Array<{ bytes: Uint8Array; tMs: number }> = [];

@@ -1,5 +1,6 @@
 export * from './ble-transport';
 export * from './calibration';
+export * from './coach-keyframes';
 export * from './protocol';
 export * from './quaternion';
 export * from './record-codec';

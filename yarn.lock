@@ -2353,6 +2353,7 @@ __metadata:
   resolution: "@golf/analytics@workspace:libs/analytics"
   dependencies:
     "@golf/types": "workspace:*"
+    zod: "npm:^3.24.4"
   languageName: unknown
   linkType: soft
 
@@ -2392,6 +2393,7 @@ __metadata:
     "@types/react": "npm:^19.1.1"
     buffer: "npm:^6.0.3"
     expo: "npm:~57.0.4"
+    expo-asset: "npm:~57.0.3"
     expo-audio: "npm:~57.0.2"
     expo-constants: "npm:~57.0.3"
     expo-dev-client: "npm:~57.0.5"

@@ -8,6 +8,7 @@ import {
   MeasuredShot,
   Session,
   ShotRecord,
+  WristSwingRecord,
 } from '@golf/types';
 
 import { SqlDatabase, SqlValue } from './database';
@@ -17,11 +18,13 @@ import {
   mapDrillRepRow,
   mapSessionRow,
   mapShotRow,
+  mapWristSwingRow,
   AnalysisRow,
   ClubRow,
   DrillRepRow,
   SessionRow,
   ShotRow,
+  WristSwingRow,
 } from './rows';
 
 /** insertShot hit the shot_guid UNIQUE constraint — the shot already exists. */
@@ -339,6 +342,35 @@ export function createDataStore(
         [clubId],
       );
       return rows.map(mapShotRow);
+    },
+
+    /* ── wrist swings ── */
+    async insertWristSwing(input) {
+      const record: WristSwingRecord = {
+        ...input,
+        id: newId(),
+        createdAt: now(),
+      };
+      await db.runAsync(
+        `INSERT INTO wrist_swings (id, session_id, t_impact_ms, coach_json, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          record.id,
+          record.sessionId,
+          record.tImpactMs,
+          JSON.stringify(record.coach),
+          record.createdAt,
+        ],
+      );
+      return record;
+    },
+
+    async listWristSwings(sessionId) {
+      const rows = await db.getAllAsync<WristSwingRow>(
+        'SELECT * FROM wrist_swings WHERE session_id = ? ORDER BY t_impact_ms ASC',
+        [sessionId],
+      );
+      return rows.map(mapWristSwingRow);
     },
 
     /* ── analyses ── */

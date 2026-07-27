@@ -4,7 +4,7 @@ import { DrillRep } from './drill';
 import { FlightResult } from './flight';
 import { Session } from './session';
 import { MeasuredShot, ShotRecord } from './shot';
-import { WristShot } from './wrist';
+import { WristShot, WristSwingRecord } from './wrist';
 
 /* ───────────────────────── persistence — WP2 public API ───────────────────────── */
 export interface DataStore {
@@ -38,6 +38,14 @@ export interface DataStore {
     clubId: string,
     opts?: { sinceSessionId?: string },
   ): Promise<ShotRecord[]>;
+  // wrist swings (every validated swing during a session, practice included,
+  // so the coach export can count unpaired swings — the live join buffer
+  // silently ages them out)
+  insertWristSwing(
+    input: Omit<WristSwingRecord, 'id' | 'createdAt'>,
+  ): Promise<WristSwingRecord>;
+  /** tImpactMs ascending. */
+  listWristSwings(sessionId: string): Promise<WristSwingRecord[]>;
   // analyses
   saveAnalysis(a: AnalysisRecord): Promise<void>;
   listAnalyses(sessionId: string): Promise<AnalysisRecord[]>;

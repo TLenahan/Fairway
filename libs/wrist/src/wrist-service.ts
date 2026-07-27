@@ -7,6 +7,7 @@ import {
 import { z } from 'zod';
 
 import { WristBleConnection, WristBleTransport } from './ble-transport';
+import { CoachKeyframeExtractor } from './coach-keyframes';
 import { TypedEmitter } from './emitter';
 import {
   decodeAsciiReply,
@@ -62,6 +63,7 @@ export class HackMotionWristService implements WristService {
   private state: Connection = 'disconnected';
   private connection: WristBleConnection | null = null;
   private detector: SwingDetector | null = null;
+  private coach: CoachKeyframeExtractor | null = null;
   private batteryTimer: ReturnType<typeof setInterval> | null = null;
   private vibrateTimer: ReturnType<typeof setTimeout> | null = null;
   private connectedDeviceId: string | null = null;
@@ -100,6 +102,7 @@ export class HackMotionWristService implements WristService {
   setCalibration(calibration: WristCalibration | null): void {
     this.calibration = calibration;
     this.detector?.setCalibration(calibration);
+    this.coach?.setCalibration(calibration);
   }
 
   setEmitSamples(enabled: boolean): void {
@@ -162,9 +165,18 @@ export class HackMotionWristService implements WristService {
       const connection = await this.transport.connect(deviceId);
       this.connection = connection;
       this.connectedDeviceId = deviceId;
+      // the coach extractor rides the same sample stream and clock constants
+      // as the detector so its keyframe anchors resolve to exact samples
+      const coach = new CoachKeyframeExtractor({
+        calibration: this.calibration,
+        deviceClockHz: this.detectorOptions.deviceClockHz,
+        gapResyncMs: this.detectorOptions.gapResyncMs,
+      });
+      this.coach = coach;
       this.detector = new SwingDetector(
         {
-          onSwing: (shot) => this.emitter.emit('swing', shot),
+          onSwing: (shot) =>
+            this.emitter.emit('swing', { ...shot, coach: coach.extract(shot) }),
           onHold: (hold) => this.emitter.emit('hold', hold),
           onPhase: (phase) => this.emitter.emit('phase', phase),
         },
@@ -216,13 +228,17 @@ export class HackMotionWristService implements WristService {
     }
     if (data[0] === TELEMETRY_MARKER) {
       for (const record of parseFrame(data)) {
-        this.detector?.push({
+        const sample = {
           tMs: arrivalMs,
           tsa: record.tsA,
           qA: record.qA,
           qB: record.qB,
           shock: shockOf(record),
-        });
+        };
+        // coach first: when a swing finalizes inside detector.push, the
+        // extractor's buffer already holds the current sample
+        this.coach?.push(sample);
+        this.detector?.push(sample);
         if (this.emitSamples) {
           this.emitter.emit('sample', {
             tMs: arrivalMs,
@@ -282,5 +298,6 @@ export class HackMotionWristService implements WristService {
     void this.connection?.disconnect().catch(() => undefined);
     this.connection = null;
     this.detector = null;
+    this.coach = null;
   }
 }

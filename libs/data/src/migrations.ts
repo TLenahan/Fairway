@@ -189,6 +189,28 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 7,
+    async up(db) {
+      // Every validated wrist swing during a session, practice swings
+      // included — the coach export's coverage counts unpaired swings, which
+      // the live wrist↔shot join silently ages out. coach_json is the
+      // WristCoachResult (keyframes or a drop reason), never clamped.
+      // IF NOT EXISTS: the migration runner bumps user_version in a separate
+      // statement, so a crash between the two must leave a re-runnable
+      // migration, not a permanently failing CREATE.
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS wrist_swings (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES sessions(id),
+          t_impact_ms INTEGER NOT NULL,
+          coach_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_wrist_swings_session ON wrist_swings(session_id);
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {

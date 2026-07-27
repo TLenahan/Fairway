@@ -1,4 +1,10 @@
-import { WristHold, WristPhaseEvent, WristShot } from '@golf/types';
+import {
+  WristCalibration,
+  WristCalibrationSchema,
+  WristHold,
+  WristPhaseEvent,
+  WristShot,
+} from '@golf/types';
 import { Buffer } from 'buffer';
 
 import { parseFrame, shockOf } from './record-codec';
@@ -30,6 +36,9 @@ export interface CaptureShotLabel {
 export interface CaptureContext {
   tMs: number;
   calibrated: boolean;
+  /** full anatomical calibration, when the capture recorded it (older
+      captures carry only the boolean and cannot replay calibrated angles) */
+  calibration: WristCalibration | null;
   club: {
     id: string;
     name: string;
@@ -82,13 +91,16 @@ export function parseCapture(text: string): ParsedCapture {
           ballSpeedMs: (obj.ballSpeedMs as number) ?? null,
         });
         break;
-      case 'context':
+      case 'context': {
+        const calibration = WristCalibrationSchema.safeParse(obj.calibration);
         contexts.push({
           tMs: obj.t as number,
           calibrated: Boolean(obj.calibrated),
+          calibration: calibration.success ? calibration.data : null,
           club: (obj.club as CaptureContext['club']) ?? null,
         });
         break;
+      }
       default:
         break;
     }
