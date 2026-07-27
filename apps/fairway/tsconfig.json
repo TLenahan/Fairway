@@ -53,6 +53,8 @@
   "exclude": [
     "node_modules",
     "ios",
-    "android"
+    "android",
+    "**/*.spec.ts",
+    "jest.config.ts"
   ]
 }
