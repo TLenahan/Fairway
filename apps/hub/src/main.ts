@@ -1,30 +1,50 @@
 import { mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import { openNodeDatabase } from '@golf/data/node';
+import { Environment } from '@golf/types';
 
+import { startHubServer } from './server';
 import { createHubServices } from './services';
 import { createNodeTcpFactory } from './transports/tcp';
 import { createNodeUdpFactory } from './transports/udp';
-import { createNobleWristTransport } from './transports/wrist-ble';
 
 /**
- * Headless hub entry (`yarn nx run hub:serve`): live EYE MINI discovery +
- * HackMotion stream + per-shot SQLite join, logging to the console. The
- * Electron shell replaces this as the session UI lands; the composition
- * underneath stays identical.
+ * Hub entry (`yarn nx run hub:serve`): live EYE MINI discovery + HackMotion
+ * stream + per-shot SQLite join, with the session UI served on localhost.
+ * macOS note: run through the FairwayHub.app wrapper (tools/make-hub-app.sh)
+ * or Bluetooth access gets the process killed — see @golf/hub wrist-ble.ts.
  */
+const UI_PORT = 4271;
+
+const ENVIRONMENT: Environment = {
+  altitudeM: 0,
+  temperatureC: 20,
+  presetName: null,
+};
+
 async function main(): Promise<void> {
   const dataDir = join(homedir(), '.fairway');
   mkdirSync(dataDir, { recursive: true });
   const db = openNodeDatabase(join(dataDir, 'hub.db'));
 
+  // HUB_NO_BLE=1 skips loading the BLE stack entirely — bare `node` without
+  // the FairwayHub.app wrapper is TCC-killed on CoreBluetooth access.
+  const requireModule = createRequire(__filename);
+  const loadWristBle = (): typeof import('./transports/wrist-ble.js') =>
+    requireModule('./transports/wrist-ble');
+  const wristTransport = process.env.HUB_NO_BLE
+    ? undefined
+    : loadWristBle().createNobleWristTransport();
+
   const services = await createHubServices({
     db,
     tcp: createNodeTcpFactory(),
     udp: createNodeUdpFactory(),
-    wristTransport: createNobleWristTransport(),
+    ...(wristTransport ? { wristTransport } : {}),
+    getEnvironment: () => ENVIRONMENT,
     onError: (err) => console.error('[hub]', err.message),
   });
 
@@ -35,41 +55,30 @@ async function main(): Promise<void> {
     void monitor.connect(device.ip);
   });
   monitor.on('connection', (state) => console.log(`[mini] ${state}`));
-  monitor.on('shot', (shot) => {
-    console.log(
-      `[shot] ${shot.shotGuid} ball ${shot.ball.speedMs?.toFixed(1) ?? '—'} m/s ` +
-        `smash ${shot.smashFactor?.toFixed(2) ?? '—'}`,
-    );
-  });
-
-  if (wrist) {
-    wrist.on('device', (device) => {
-      if (device.name?.startsWith('HackMotion')) {
-        console.log(`[wrist] found ${device.name} (${device.id})`);
-        wrist.stopScan();
-        void wrist.connect(device.id);
-      }
-    });
-    wrist.on('connection', (state) => console.log(`[wrist] ${state}`));
-    wrist.on('swing', (swing) => {
-      console.log(
-        `[swing] top ${swing.top.angles.extensionDeg?.toFixed(1) ?? '—'}° ext, ` +
-          `${swing.durationMs.toFixed(0)}ms`,
-      );
-    });
-    wrist.startScan();
-  }
+  wrist?.on('connection', (state) => console.log(`[wrist] ${state}`));
 
   store.subscribe((state, prev) => {
     const latest = state.sessionShots[0];
     if (latest && latest !== prev.sessionShots[0]) {
       const wristTag = latest.wrist ? ' +wrist' : '';
-      console.log(`[joined] shot persisted${wristTag}`);
+      console.log(
+        `[shot] ${latest.measured.shotGuid} ` +
+          `carry ${latest.flight?.carryM.toFixed(1) ?? '—'} m${wristTag}`,
+      );
     }
   });
 
-  monitor.startDiscovery();
-  console.log('[hub] running — EYE MINI discovery + wrist scan. Ctrl-C to stop.');
+  const uiDir = join(__dirname, '../dist-ui');
+  await startHubServer({
+    services,
+    environment: ENVIRONMENT,
+    uiDir,
+    port: UI_PORT,
+  });
+
+  store.getState().startDiscovery();
+  store.getState().startWristScan();
+  console.log(`[hub] running — session UI at http://localhost:${UI_PORT}`);
 
   process.on('SIGINT', () => {
     console.log('\n[hub] shutting down');

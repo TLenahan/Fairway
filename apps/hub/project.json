@@ -5,10 +5,23 @@
   "projectType": "application",
   "tags": ["scope:golf", "type:app", "app:hub"],
   "targets": {
-    "serve": {
+    "build-ui": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "node -r @swc-node/register apps/hub/src/main.ts",
+        "commands": [
+          "esbuild apps/hub/src/renderer/index.tsx --bundle --format=iife --jsx=automatic --tsconfig=apps/hub/tsconfig.json --outfile=apps/hub/dist-ui/renderer.js --log-level=warning",
+          "cp apps/hub/src/renderer/index.html apps/hub/dist-ui/index.html"
+        ],
+        "parallel": false,
+        "cwd": "{workspaceRoot}"
+      },
+      "outputs": ["{projectRoot}/dist-ui"]
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-ui"],
+      "options": {
+        "command": "node -r @swc-node/register -r ./apps/hub/scripts/register-paths.cjs apps/hub/src/main.ts",
         "cwd": "{workspaceRoot}"
       }
     }

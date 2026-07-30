@@ -10,6 +10,8 @@ export default [
     ignores: [
       '**/node_modules',
       '**/dist',
+      '**/dist-ui',
+      '**/dist-app',
       '**/coverage',
       '**/.expo',
       'apps/fairway/ios',

@@ -20,3 +20,5 @@ apps/fairway/android/
 # Secrets
 .env
 .env.*
+dist-ui/
+dist-app/
