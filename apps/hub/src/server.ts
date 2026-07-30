@@ -98,11 +98,13 @@ export async function startHubServer(
       case 'disconnectMini':
         return store.disconnect();
       case 'startSession':
-        return store.startSession(config.environment);
+        return store.startSession(config.environment, command.intent);
       case 'endSession':
         return store.endSession();
       case 'selectClub':
         return store.selectClub(command.clubId);
+      case 'setActiveIntent':
+        return store.setActiveIntent(command.intent);
       case 'startWristScan':
         wristCandidates.length = 0;
         return store.startWristScan();

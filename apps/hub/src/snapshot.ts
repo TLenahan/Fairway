@@ -33,6 +33,8 @@ export function buildSnapshot(
       curveM: shot.flight?.curveM ?? null,
       apexM: shot.flight?.apexM ?? null,
       hasWrist: shot.wrist !== undefined,
+      intent: shot.intent,
+      warmup: shot.warmup,
     }));
 
   return {
@@ -41,6 +43,7 @@ export function buildSnapshot(
     ballReady: state.ballReady,
     session: state.session,
     activeClubId: state.activeClub?.id ?? null,
+    activeIntent: state.activeIntent,
     clubs: extras.clubs,
     shots,
     wristConnection: state.wristConnection,

@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { ShotIntent } from '@golf/types';
+
 import { HubCommand, HubSnapshot, SnapshotMessage } from '../shared/protocol';
+
+const INTENTS: ShotIntent[] = ['stock', 'draw', 'fade'];
 
 /** Session UI v1: connection status, session controls, club picker, shot log. */
 
@@ -118,10 +122,25 @@ function App(): React.JSX.Element {
               </span>
             </>
           ) : (
-            <button className="primary" onClick={() => send({ cmd: 'startSession' })}>
+            <button
+              className="primary"
+              onClick={() => send({ cmd: 'startSession', intent: s.activeIntent })}
+            >
               Start session
             </button>
           )}
+          <span className="dim" style={{ marginLeft: 12 }}>
+            Intent:
+          </span>
+          {INTENTS.map((intent) => (
+            <button
+              key={intent}
+              className={intent === s.activeIntent ? 'active' : ''}
+              onClick={() => send({ cmd: 'setActiveIntent', intent })}
+            >
+              {intent}
+            </button>
+          ))}
         </div>
         <div className="row" style={{ marginTop: 10 }}>
           {s.clubs.map((club) => (
@@ -145,6 +164,7 @@ function App(): React.JSX.Element {
             <thead>
               <tr>
                 <th>Club</th>
+                <th>Intent</th>
                 <th>Ball mph</th>
                 <th>Smash</th>
                 <th>Carry yd</th>
@@ -158,6 +178,9 @@ function App(): React.JSX.Element {
               {s.shots.map((shot) => (
                 <tr key={shot.id}>
                   <td className={shot.discarded ? 'discarded' : ''}>{shot.clubName}</td>
+                  <td>
+                    {shot.warmup ? <span className="dim">warmup</span> : shot.intent}
+                  </td>
                   <td>{fmt(shot.ballSpeedMs, MS_TO_MPH)}</td>
                   <td>{shot.smashFactor?.toFixed(2) ?? '—'}</td>
                   <td>{fmt(shot.carryM, M_TO_YD, 0)}</td>

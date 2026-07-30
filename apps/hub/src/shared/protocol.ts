@@ -3,6 +3,7 @@ import {
   DiscoveredDevice,
   Environment,
   Session,
+  ShotIntent,
   WristDevice,
 } from '@golf/types';
 
@@ -28,6 +29,8 @@ export interface ShotRowDto {
   curveM: number | null;
   apexM: number | null;
   hasWrist: boolean;
+  intent: ShotIntent;
+  warmup: boolean;
 }
 
 export interface HubSnapshot {
@@ -36,6 +39,7 @@ export interface HubSnapshot {
   ballReady: boolean;
   session: Session | null;
   activeClubId: string | null;
+  activeIntent: ShotIntent;
   clubs: Club[];
   shots: ShotRowDto[];
   wristConnection: string;
@@ -50,9 +54,10 @@ export type HubCommand =
   | { cmd: 'startDiscovery' }
   | { cmd: 'connectMini'; ip: string }
   | { cmd: 'disconnectMini' }
-  | { cmd: 'startSession' }
+  | { cmd: 'startSession'; intent?: ShotIntent }
   | { cmd: 'endSession' }
   | { cmd: 'selectClub'; clubId: string }
+  | { cmd: 'setActiveIntent'; intent: ShotIntent }
   | { cmd: 'startWristScan' }
   | { cmd: 'stopWristScan' }
   | { cmd: 'connectWrist'; deviceId: string }
