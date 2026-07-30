@@ -21,6 +21,7 @@
       "@golf/monitor": ["./libs/monitor/src/index.ts"],
       "@golf/wrist": ["./libs/wrist/src/index.ts"],
       "@golf/drill": ["./libs/drill/src/index.ts"],
+      "@golf/coach": ["./libs/coach/src/index.ts"],
       "@golf/data": ["./libs/data/src/index.ts"],
       "@golf/data/node": ["./libs/data/src/node.ts"],
       "@golf/monitor/testing": ["./libs/monitor/src/testing/index.ts"],

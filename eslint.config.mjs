@@ -50,6 +50,10 @@ export default [
               onlyDependOnLibsWithTags: ['lib:types', 'lib:analytics'],
             },
             { sourceTag: 'lib:analytics', onlyDependOnLibsWithTags: ['lib:types'] },
+            {
+              sourceTag: 'lib:coach',
+              onlyDependOnLibsWithTags: ['lib:types', 'lib:analytics'],
+            },
             { sourceTag: 'lib:data', onlyDependOnLibsWithTags: ['lib:types'] },
             { sourceTag: 'lib:viz', onlyDependOnLibsWithTags: ['lib:types'] },
             { sourceTag: 'lib:monitor', onlyDependOnLibsWithTags: ['lib:types'] },

@@ -7,7 +7,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@golf/analytics": "workspace:*",
+    "@golf/coach": "workspace:*",
     "@golf/data": "workspace:*",
     "@golf/drill": "workspace:*",
     "@golf/flight-model": "workspace:*",

@@ -61,7 +61,7 @@ Small existing-code changes (all additive; RN app keeps building): split the `@g
 
 ## 5. Open decisions (§7) — decided
 
-1. **Hub shell: Electron.** Confirmed by audit: every core lib already runs under Node-env Jest; hub main is composition + adapters. Risk concentrates in noble + macOS Bluetooth permissions inside Electron — stand up day one per the spec.
+1. **Hub shell: Node process + localhost web UI** (revised from Electron per Tim, 2026-07-30: "if we get the same abilities via a web app, no need to worry about the electron app"). One runtime for BLE/sqlite (no Electron-ABI rebuilds), the HTTP/WS server doubles as the Phase 2 phone endpoint, and `tools/make-hub-app.sh` wraps the process for macOS Bluetooth permissions.
 2. **Ring buffer:** unchanged — spike chunked-HEVC vs native AVAssetWriter in Phase 2 week 1.
 3. **DB layer: better-sqlite3 via the existing `@golf/data` seam + its migration system. No Drizzle** — deviation from the spec's recommendation. Adopting Drizzle would create a second schema/migration source diverging from the phone DAO over the same tables; the audit's cardinal finding is that duplication, not tooling, is the risk. New Insights tables (§6.11) land as `@golf/data` migrations.
 4. **Python interop:** long-lived FastAPI worker on localhost, `uv`-managed (accept rec).

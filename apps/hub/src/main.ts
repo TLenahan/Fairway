@@ -1,11 +1,13 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import Anthropic from '@anthropic-ai/sdk';
 import { openNodeDatabase } from '@golf/data/node';
 import { Environment } from '@golf/types';
 
+import { runDailyCoachRecap } from './coach/recap-runner';
 import { startHubServer } from './server';
 import { createHubServices } from './services';
 import { createNodeTcpFactory } from './transports/tcp';
@@ -68,12 +70,43 @@ async function main(): Promise<void> {
     }
   });
 
+  // Reform Coach: key from env or ~/.fairway/anthropic_api_key (chmod 600)
+  const apiKey =
+    process.env.ANTHROPIC_API_KEY ??
+    ((): string | null => {
+      try {
+        return readFileSync(join(dataDir, 'anthropic_api_key'), 'utf8').trim();
+      } catch {
+        return null;
+      }
+    })();
+  let onSessionEnd: ((sessionId: string) => void) | undefined;
+  if (apiKey) {
+    const coach = {
+      client: new Anthropic({ apiKey }),
+      data: services.data,
+      dataDir,
+      handedness: 'right' as const,
+    };
+    onSessionEnd = (sessionId) => {
+      console.log('[coach] building daily recap…');
+      runDailyCoachRecap(coach, sessionId)
+        .then(() => console.log('[coach] recap saved'))
+        .catch((err: Error) => console.error('[coach]', err.message));
+    };
+  } else {
+    console.log(
+      '[coach] disabled — set ANTHROPIC_API_KEY or ~/.fairway/anthropic_api_key',
+    );
+  }
+
   const uiDir = join(__dirname, '../dist-ui');
   await startHubServer({
     services,
     environment: ENVIRONMENT,
     uiDir,
     port: UI_PORT,
+    ...(onSessionEnd ? { onSessionEnd } : {}),
   });
 
   store.getState().startDiscovery();

@@ -19,6 +19,8 @@ export interface HubServerConfig {
   environment: Environment;
   uiDir: string;
   port: number;
+  /** fires after a session ends — the daily coach-recap hook */
+  onSessionEnd?(sessionId: string): void;
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -99,8 +101,12 @@ export async function startHubServer(
         return store.disconnect();
       case 'startSession':
         return store.startSession(config.environment, command.intent);
-      case 'endSession':
-        return store.endSession();
+      case 'endSession': {
+        const endedSessionId = store.session?.id;
+        await store.endSession();
+        if (endedSessionId) config.onSessionEnd?.(endedSessionId);
+        return;
+      }
       case 'selectClub':
         return store.selectClub(command.clubId);
       case 'setActiveIntent':

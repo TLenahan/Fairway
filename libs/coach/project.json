@@ -1,0 +1,7 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "coach",
+  "sourceRoot": "libs/coach/src",
+  "projectType": "library",
+  "tags": ["scope:golf", "type:util", "lib:coach"]
+}
