@@ -1,134 +1,10 @@
-import { Buffer } from 'buffer';
 import { MeasuredShot } from '@golf/types';
 
 import fixture from './fixtures/sample-shot.json';
 import { encode, FrameParser, WireMessage } from './frame-codec';
 import { CONTROL_PORT, EVENT_PORT, EyeMiniMonitor } from './monitor-service';
-import {
-  ConnectTimeoutError,
-  TcpConnection,
-  TcpConnectOptions,
-  TcpFactory,
-  UdpFactory,
-  UdpSocket,
-} from './transport';
-
-class FakeTcpConnection implements TcpConnection {
-  sent: WireMessage[] = [];
-  destroyed = false;
-  private dataHandlers: ((chunk: Uint8Array) => void)[] = [];
-  private closeHandlers: (() => void)[] = [];
-  private errorHandlers: ((err: Error) => void)[] = [];
-  private outParser = new FrameParser((m) => this.sent.push(m));
-
-  write(data: Uint8Array): void {
-    this.outParser.push(data);
-  }
-  onData(handler: (chunk: Uint8Array) => void): void {
-    this.dataHandlers.push(handler);
-  }
-  onClose(handler: () => void): void {
-    this.closeHandlers.push(handler);
-  }
-  onError(handler: (err: Error) => void): void {
-    this.errorHandlers.push(handler);
-  }
-  destroy(): void {
-    this.destroyed = true;
-  }
-
-  /** simulate the Mini pushing a framed message */
-  feed(eventId: number, command: number, param: Record<string, unknown>): void {
-    // responses use answer/ack headers; reuse encode and rewrite the header
-    const body = JSON.stringify({
-      header: {
-        status: 0,
-        answer: eventId,
-        event_id: eventId,
-        command,
-        ack_id: 0,
-        length: 0,
-      },
-      param,
-    });
-    const json = Buffer.from(body, 'utf8');
-    const frame = Buffer.alloc(8 + json.length);
-    Buffer.from([0x99, 0x01, 0x28, 0x28]).copy(frame, 0);
-    frame.writeUInt32BE(json.length, 4);
-    json.copy(frame, 8);
-    for (const handler of this.dataHandlers) handler(frame);
-  }
-
-  dropped(): void {
-    for (const handler of this.closeHandlers) handler();
-  }
-}
-
-type ConnectBehavior = 'ok' | 'timeout' | 'refused';
-
-class FakeTcpFactory implements TcpFactory {
-  connections: { port: number; conn: FakeTcpConnection }[] = [];
-  behavior: (opts: TcpConnectOptions, attempt: number) => ConnectBehavior =
-    () => 'ok';
-  private attempts = 0;
-
-  async connect(opts: TcpConnectOptions): Promise<TcpConnection> {
-    this.attempts += 1;
-    const behavior = this.behavior(opts, this.attempts);
-    if (behavior === 'timeout') {
-      throw new ConnectTimeoutError(opts.host, opts.port);
-    }
-    if (behavior === 'refused') {
-      throw new Error('ECONNREFUSED');
-    }
-    const conn = new FakeTcpConnection();
-    this.connections.push({ port: opts.port, conn });
-    return conn;
-  }
-
-  byPort(port: number): FakeTcpConnection {
-    const found = [...this.connections].reverse().find((c) => c.port === port);
-    if (!found) throw new Error(`no connection on ${port}`);
-    return found.conn;
-  }
-}
-
-class FakeUdpSocket implements UdpSocket {
-  closed = false;
-  private handlers: ((data: Uint8Array, fromIp: string) => void)[] = [];
-  onMessage(handler: (data: Uint8Array, fromIp: string) => void): void {
-    this.handlers.push(handler);
-  }
-  close(): void {
-    this.closed = true;
-  }
-  beacon(serial: string, ip: string): void {
-    const data = Buffer.from(
-      JSON.stringify({
-        device: {
-          modelName: 'EYEMINI',
-          hwVersion: '5010',
-          swVersion: '2.7.8',
-          serialNumber: serial,
-          networkInfo: {
-            interface: 'wlan0',
-            ipaddr: ip,
-            mac: 'D8:3A:DD:5A:28:95',
-          },
-        },
-      }),
-      'utf8',
-    );
-    for (const handler of this.handlers) handler(data, ip);
-  }
-}
-
-class FakeUdpFactory implements UdpFactory {
-  socket = new FakeUdpSocket();
-  async openBroadcastListener(): Promise<UdpSocket> {
-    return this.socket;
-  }
-}
+import { createFakeEyeMini, feedShot } from './testing/fake-transport';
+import { ConnectTimeoutError } from './transport';
 
 const flush = async (times = 3) => {
   for (let i = 0; i < times; i += 1) await Promise.resolve();
@@ -137,9 +13,7 @@ const flush = async (times = 3) => {
 const liveMonitors: EyeMiniMonitor[] = [];
 
 function build() {
-  const tcp = new FakeTcpFactory();
-  const udp = new FakeUdpFactory();
-  const monitor = new EyeMiniMonitor({ tcp, udp });
+  const { tcp, udp, monitor } = createFakeEyeMini();
   liveMonitors.push(monitor);
   const states: string[] = [];
   monitor.on('connection', (s) => states.push(s));
@@ -202,8 +76,8 @@ describe('EyeMiniMonitor — shots', () => {
     await monitor.connect('192.168.1.10');
     const event = tcp.byPort(EVENT_PORT);
 
-    event.feed(192, 1, { shotdataEX1: fixture.raw_shotdataEX1 });
-    event.feed(192, 1, { shotdataEX1: fixture.raw_shotdataEX1 }); // Mini re-push
+    feedShot(event, fixture.raw_shotdataEX1);
+    feedShot(event, fixture.raw_shotdataEX1); // Mini re-push
     expect(shots).toHaveLength(1);
     expect(shots[0].ball.speedMs).toBeCloseTo(26.092);
     expect(shots[0].club.faceAngleDeg).toBeNull();
@@ -214,9 +88,7 @@ describe('EyeMiniMonitor — shots', () => {
     const shots: MeasuredShot[] = [];
     monitor.on('shot', (s) => shots.push(s));
     await monitor.connect('192.168.1.10');
-    tcp
-      .byPort(CONTROL_PORT)
-      .feed(192, 1, { shotdataEX1: fixture.raw_shotdataEX1 });
+    feedShot(tcp.byPort(CONTROL_PORT), fixture.raw_shotdataEX1);
     expect(shots).toHaveLength(1);
   });
 });
@@ -315,9 +187,7 @@ describe('EyeMiniMonitor — reconnect + failure classification', () => {
     expect(eventCountAfter).toBeGreaterThan(eventCountBefore);
 
     // shots flow again on the fresh event channel
-    tcp
-      .byPort(EVENT_PORT)
-      .feed(192, 1, { shotdataEX1: fixture.raw_shotdataEX1 });
+    feedShot(tcp.byPort(EVENT_PORT), fixture.raw_shotdataEX1);
     expect(shots).toHaveLength(1);
   });
 
