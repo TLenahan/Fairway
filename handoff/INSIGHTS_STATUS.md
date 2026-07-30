@@ -14,7 +14,7 @@ feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 | 2 — Capture clients + clips | Not started. **No batch mode (Tim).** Ring-buffer spike is the mandatory first task; GoPro HERO 12 may join per GOPRO_CAPTURE.md bench |
 | 3 — Pose pipeline | Not started (Python/uv worker, MediaPipe) |
 | 4 — Analytics engine | **Done.** `@golf/insights`, 115 tests incl. planted-effect acceptance + negative control |
-| 5 — Insights UI / drills / LLM / MCP | Coach narrative layer done (early); findings feed, drill loop, MCP server not started |
+| 5 — Insights UI / drills / LLM / MCP | Coach narrative layer + findings feed done (early); drill loop and MCP server not started |
 | 6 — Address station | Not started. Vibrate bench parked (harness recipe in memory; hardware unverified) |
 
 ## What runs today
@@ -28,7 +28,8 @@ yarn nx run hub:build-ui           # bundle the renderer
 open apps/hub/dist-app/FairwayHub.app   # UI: http://localhost:4271, log: ~/.fairway/hub.log
 ```
 
-Dev without BLE: `HUB_NO_BLE=1 yarn nx run hub:serve`. DB at `~/.fairway/hub.db`
+Dev without BLE: `HUB_NO_BLE=1 yarn nx run hub:serve`. `FAIRWAY_DATA_DIR`
+points the hub at a scratch data dir (DB + coach resources) for testing. DB at `~/.fairway/hub.db`
 (same `@golf/data` migrations as the phone, schema v8). The UI has session
 start/end, club picker, **intent picker** (stock/draw/fade), live shot log
 with warmup tags and wrist-join markers. EYE MINI auto-connects via UDP
@@ -42,7 +43,9 @@ flight + wrist coach blocks) and runs the coach agent — no-egress sandbox,
 cross-day memory store, recap persisted to the `analyses` table. First run
 provisions agent/environment/memory-store into `~/.fairway/coach.json`.
 
-**Analytics engine**: `analyzeShots(shots, config)` from `@golf/insights` —
+**Analytics engine**: served at `GET /api/insights` and shown in the UI's
+Insights panel; also rides the coach payload as the `insights` block
+(contract v4). `analyzeShots(shots, config)` from `@golf/insights` —
 per-(club,intent) great-shot classification, reference/dispersion baselines,
 certification, changepoint, findings (guardrailed), bias-vs-variance, carry
 decomposition, dispersion index. All thresholds in
@@ -69,15 +72,12 @@ logic is developed against it.
 
 ## Next build steps (in order)
 
-1. Wire `@golf/insights` findings into the coach daily payload (§6.12 rule
-   2: the agent consumes findings, never computes) + a findings panel in
-   the hub UI.
-2. Historical import once the phone DB lands.
-3. Phase 2: RN capture app — ring-buffer spike first (chunked HEVC
+1. Historical import once the phone DB lands.
+2. Phase 2: RN capture app — ring-buffer spike first (chunked HEVC
    segments vs native AVAssetWriter), live per-shot clips only, no batch;
    GoPro path folds in if the bench passes.
-4. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics.
-5. Phase 5 remainder: drill-library content files + prescription loop, MCP
+3. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics.
+4. Phase 5 remainder: drill-library content files + prescription loop, MCP
    server (`query_shots`, `get_baseline`, `get_findings`, …).
 
 ## Decisions log (with rationale, chronological)
@@ -108,7 +108,6 @@ logic is developed against it.
 - Hub handedness is a constant (`right`) in `apps/hub/src/main.ts` —
   settings surface pending.
 - Coach recap not yet shown in the hub UI (persisted to DB only).
-- Insights engine not yet called anywhere in the hub.
 - No CI. `yarn nx run-many -t test,typecheck,lint` is the manual gate
   (15 projects, green as of this commit).
 - Main-checkout `node_modules` needs `yarn install` after this merge (new
