@@ -9,6 +9,7 @@ import {
   MonitorService,
   MonitorServiceEvents,
   Session,
+  ShotIntent,
   ShotRecord,
   WristService,
   WristServiceEvents,
@@ -16,7 +17,7 @@ import {
   WristSwingRecord,
 } from '@golf/types';
 
-import { createFairwayStore } from './create-store';
+import { createFairwayStore, WARMUP_SHOT_COUNT } from './create-store';
 
 const flightFixture: FlightResult = {
   path: [{ t: 0, x: 0, y: 0, z: 0 }],
@@ -141,10 +142,13 @@ class FakeData implements DataStore {
   }
   async archiveClub(): Promise<void> {}
   async createSession(
-    input: Omit<Session, 'id' | 'createdAt' | 'endedAt'>,
+    input: Omit<Session, 'id' | 'createdAt' | 'endedAt' | 'defaultIntent'> & {
+      defaultIntent?: ShotIntent;
+    },
   ): Promise<Session> {
     const created: Session = {
       ...input,
+      defaultIntent: input.defaultIntent ?? 'stock',
       id: `session-${this.nextId++}`,
       createdAt: 1,
       endedAt: null,
@@ -169,6 +173,7 @@ class FakeData implements DataStore {
     clubId: string,
     m: MeasuredShot,
     flight: FlightResult | null,
+    opts?: { intent?: ShotIntent; warmup?: boolean },
   ): Promise<ShotRecord> {
     const record: ShotRecord = {
       id: `shot-${this.nextId++}`,
@@ -177,6 +182,8 @@ class FakeData implements DataStore {
       shotGuid: m.shotGuid,
       capturedAt: 3,
       discarded: false,
+      intent: opts?.intent ?? 'untagged',
+      warmup: opts?.warmup ?? false,
       measured: m,
       flight,
     };
@@ -189,6 +196,16 @@ class FakeData implements DataStore {
     if (shot) shot.wrist = wrist;
   }
   async setShotDiscarded(): Promise<void> {}
+  async setShotIntent(shotId: string, intent: ShotIntent): Promise<void> {
+    const shot = this.shots.find((s) => s.id === shotId);
+    if (!shot) throw new Error('missing');
+    shot.intent = intent;
+  }
+  async setShotWarmup(shotId: string, warmup: boolean): Promise<void> {
+    const shot = this.shots.find((s) => s.id === shotId);
+    if (!shot) throw new Error('missing');
+    shot.warmup = warmup;
+  }
   async listShots(): Promise<ShotRecord[]> {
     return this.shots;
   }
@@ -566,6 +583,85 @@ describe('createFairwayStore', () => {
       status: 'dropped',
       reason: 'glitch',
     });
+  });
+});
+
+describe('createFairwayStore — intent & warmup', () => {
+  it('stamps shots with the active intent and flags the first shots as warmup', async () => {
+    const { monitor, data, store, errors } = build();
+    await withActiveIron(store);
+
+    for (let i = 0; i < WARMUP_SHOT_COUNT + 1; i++) {
+      monitor.emit('shot', measuredFixture(`g-${i}`));
+      await flush();
+    }
+
+    expect(errors).toHaveLength(0);
+    expect(data.shots).toHaveLength(WARMUP_SHOT_COUNT + 1);
+    // activeIntent defaults to 'stock' — never 'untagged' from the pipeline
+    expect(data.shots.every((s) => s.intent === 'stock')).toBe(true);
+    for (let i = 0; i < WARMUP_SHOT_COUNT; i++) {
+      expect(data.shots[i].warmup).toBe(true);
+    }
+    expect(data.shots[WARMUP_SHOT_COUNT].warmup).toBe(false);
+  });
+
+  it('startSession seeds activeIntent from defaultIntent; setActiveIntent re-stamps', async () => {
+    const { monitor, data, store } = build();
+    await withActiveIron(store);
+
+    await store.getState().startSession(
+      {
+        altitudeM: 1849,
+        temperatureC: null,
+        presetName: 'Home ~6,000 ft',
+      },
+      'draw',
+    );
+    expect(store.getState().session?.defaultIntent).toBe('draw');
+    expect(store.getState().activeIntent).toBe('draw');
+
+    monitor.emit('shot', measuredFixture('g-1'));
+    await flush();
+    expect(data.shots[0].intent).toBe('draw');
+
+    store.getState().setActiveIntent('fade');
+    monitor.emit('shot', measuredFixture('g-2'));
+    await flush();
+    expect(data.shots[1].intent).toBe('fade');
+  });
+
+  it('implicit quick sessions keep defaultIntent stock and activeIntent as-is', async () => {
+    const { monitor, data, store } = build();
+    await withActiveIron(store);
+
+    store.getState().setActiveIntent('fade');
+    monitor.emit('shot', measuredFixture('g-1'));
+    await flush();
+
+    expect(store.getState().session?.name).toBe('Quick session');
+    expect(store.getState().session?.defaultIntent).toBe('stock');
+    expect(store.getState().activeIntent).toBe('fade');
+    expect(data.shots[0].intent).toBe('fade');
+  });
+
+  it('setShotIntent and setShotWarmup persist and patch sessionShots', async () => {
+    const { monitor, data, store } = build();
+    await withActiveIron(store);
+
+    monitor.emit('shot', measuredFixture('g-1'));
+    await flush();
+    const shot = store.getState().sessionShots[0];
+    expect(shot.intent).toBe('stock');
+    expect(shot.warmup).toBe(true); // first shot of the session
+
+    await store.getState().setShotIntent(shot.id, 'draw');
+    await store.getState().setShotWarmup(shot.id, false);
+
+    expect(data.shots[0].intent).toBe('draw');
+    expect(data.shots[0].warmup).toBe(false);
+    expect(store.getState().sessionShots[0].intent).toBe('draw');
+    expect(store.getState().sessionShots[0].warmup).toBe(false);
   });
 });
 

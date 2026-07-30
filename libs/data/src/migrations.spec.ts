@@ -5,7 +5,7 @@ describe('migration harness', () => {
   it('migrates a fresh database to the latest version', async () => {
     const db = openTestDatabase();
     const version = await runMigrations(db);
-    expect(version).toBe(7);
+    expect(version).toBe(8);
 
     const tables = await db.getAllAsync<{ name: string }>(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -27,7 +27,7 @@ describe('migration harness', () => {
   it('is idempotent — re-running applies nothing', async () => {
     const db = openTestDatabase();
     await runMigrations(db);
-    await expect(runMigrations(db)).resolves.toBe(7);
+    await expect(runMigrations(db)).resolves.toBe(8);
     db.close();
   });
 
@@ -66,13 +66,98 @@ describe('migration harness', () => {
          '{}'
        )`,
     );
-    await expect(runMigrations(db)).resolves.toBe(7);
+    await expect(runMigrations(db)).resolves.toBe(8);
     const row = await db.getFirstAsync<{ curve_m: number | null }>(
       "SELECT curve_m FROM shots WHERE id = 'x1'",
     );
     const hlaRad = (-17.5 * Math.PI) / 180;
     const expected = -22 * Math.cos(hlaRad) - 60 * Math.sin(hlaRad);
     expect(row?.curve_m).toBeCloseTo(expected, 9);
+    db.close();
+  });
+
+  it('v8 adds intent/warmup columns with defaults on a fresh database', async () => {
+    const db = openTestDatabase();
+    await runMigrations(db);
+    await db.runAsync(
+      `INSERT INTO clubs (id, name, category, sensor_mode, archived, created_at)
+       VALUES ('c1', 'GW', 'wedge', 'iron', 0, 1)`,
+    );
+    // neither insert mentions the new columns — the DEFAULTs must fill them
+    await db.runAsync(
+      `INSERT INTO sessions (id, started_at, altitude_m, created_at)
+       VALUES ('s1', 1, 1849, 1)`,
+    );
+    await db.runAsync(
+      `INSERT INTO shots (
+         id, session_id, club_id, shot_guid, captured_at, impact_timestamp,
+         discarded, handedness,
+         ball_speed_ms, launch_angle_deg, launch_direction_deg,
+         backspin_rpm, sidespin_rpm, rollspin_rpm,
+         assurance_spin, assurance_clubspeed, assurance_clubpath,
+         assurance_faceangle, assurance_attackangle, assurance_loftangle,
+         assurance_lieangle, assurance_faceimpact_lateral,
+         assurance_faceimpact_vertical,
+         raw_json
+       ) VALUES (
+         'x1', 's1', 'c1', 'g-1', 2, 3, 0, 'right',
+         26, 25, -2, 6900, 1400, 1000,
+         97, 95, 95, 0, 95, 0, 0, 0, 0, '{}'
+       )`,
+    );
+    const session = await db.getFirstAsync<{ default_intent: string }>(
+      "SELECT default_intent FROM sessions WHERE id = 's1'",
+    );
+    expect(session?.default_intent).toBe('stock');
+    const shot = await db.getFirstAsync<{ intent: string; warmup: number }>(
+      "SELECT intent, warmup FROM shots WHERE id = 'x1'",
+    );
+    expect(shot?.intent).toBe('untagged');
+    expect(shot?.warmup).toBe(0);
+    db.close();
+  });
+
+  it('v8 backfills defaults onto rows persisted by a v7 database', async () => {
+    const db = openTestDatabase();
+    for (const migration of MIGRATIONS.slice(0, 7)) {
+      await migration.up(db);
+    }
+    await db.execAsync('PRAGMA user_version = 7');
+    await db.runAsync(
+      `INSERT INTO clubs (id, name, category, sensor_mode, archived, created_at)
+       VALUES ('c1', 'GW', 'wedge', 'iron', 0, 1)`,
+    );
+    await db.runAsync(
+      `INSERT INTO sessions (id, started_at, altitude_m, created_at)
+       VALUES ('s1', 1, 1849, 1)`,
+    );
+    await db.runAsync(
+      `INSERT INTO shots (
+         id, session_id, club_id, shot_guid, captured_at, impact_timestamp,
+         discarded, handedness,
+         ball_speed_ms, launch_angle_deg, launch_direction_deg,
+         backspin_rpm, sidespin_rpm, rollspin_rpm,
+         assurance_spin, assurance_clubspeed, assurance_clubpath,
+         assurance_faceangle, assurance_attackangle, assurance_loftangle,
+         assurance_lieangle, assurance_faceimpact_lateral,
+         assurance_faceimpact_vertical,
+         raw_json
+       ) VALUES (
+         'x1', 's1', 'c1', 'g-1', 2, 3, 0, 'right',
+         26, 25, -2, 6900, 1400, 1000,
+         97, 95, 95, 0, 95, 0, 0, 0, 0, '{}'
+       )`,
+    );
+    await expect(runMigrations(db)).resolves.toBe(8);
+    const session = await db.getFirstAsync<{ default_intent: string }>(
+      "SELECT default_intent FROM sessions WHERE id = 's1'",
+    );
+    expect(session?.default_intent).toBe('stock');
+    const shot = await db.getFirstAsync<{ intent: string; warmup: number }>(
+      "SELECT intent, warmup FROM shots WHERE id = 'x1'",
+    );
+    expect(shot?.intent).toBe('untagged');
+    expect(shot?.warmup).toBe(0);
     db.close();
   });
 

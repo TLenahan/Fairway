@@ -59,6 +59,7 @@ export interface SessionRow {
   altitude_m: number;
   temperature_c: number | null;
   env_preset: string | null;
+  default_intent: string;
   created_at: number;
 }
 
@@ -74,6 +75,7 @@ export function mapSessionRow(row: SessionRow): Session {
       temperatureC: row.temperature_c,
       presetName: row.env_preset,
     },
+    defaultIntent: row.default_intent,
     createdAt: row.created_at,
   });
 }
@@ -86,6 +88,8 @@ export interface ShotRow {
   captured_at: number;
   impact_timestamp: number;
   discarded: number;
+  intent: string;
+  warmup: number;
   handedness: string;
   // MEASURED (SI; NULL = not measured, never 0)
   ball_speed_ms: number;
@@ -143,6 +147,8 @@ export function mapShotRow(row: ShotRow): ShotRecord {
     shotGuid: row.shot_guid,
     capturedAt: row.captured_at,
     discarded: row.discarded === 1,
+    intent: row.intent,
+    warmup: row.warmup === 1,
     measured: {
       shotGuid: row.shot_guid,
       handedness: row.handedness,

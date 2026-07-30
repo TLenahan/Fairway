@@ -170,9 +170,24 @@ describe('createDataStore', () => {
     const fetched = await store.getSession(session.id);
     expect(fetched?.environment).toEqual(env);
     expect(fetched?.endedAt).toBeNull();
+    expect(fetched?.defaultIntent).toBe('stock'); // omitted → 'stock'
 
     const ended = await store.endSession(session.id);
     expect(ended.endedAt).not.toBeNull();
+  });
+
+  it('round-trips an explicit session defaultIntent', async () => {
+    const { store } = await build();
+    const session = await store.createSession({
+      name: null,
+      notes: null,
+      startedAt: 111,
+      environment: env,
+      defaultIntent: 'fade',
+    });
+    expect(session.defaultIntent).toBe('fade');
+    const fetched = await store.getSession(session.id);
+    expect(fetched?.defaultIntent).toBe('fade');
   });
 
   it('persists shots — nulls stay null and flight round-trips', async () => {
@@ -270,6 +285,84 @@ describe('createDataStore', () => {
     await expect(
       store.insertShot(session.id, club.id, measured('dup'), null),
     ).rejects.toBeInstanceOf(DuplicateShotError);
+  });
+
+  it('round-trips shot intent and warmup — omitted opts quarantine as untagged', async () => {
+    const { store } = await build();
+    const club = await store.createClub({
+      name: '7 Iron',
+      category: 'iron',
+      swingTag: 'full',
+      loftDeg: 34,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    });
+    const session = await store.createSession({
+      name: null,
+      notes: null,
+      startedAt: 1,
+      environment: env,
+    });
+
+    const untagged = await store.insertShot(
+      session.id,
+      club.id,
+      measured('g-1'),
+      null,
+    );
+    expect(untagged.intent).toBe('untagged');
+    expect(untagged.warmup).toBe(false);
+
+    const stamped = await store.insertShot(
+      session.id,
+      club.id,
+      measured('g-2'),
+      null,
+      { intent: 'draw', warmup: true },
+    );
+    expect(stamped.intent).toBe('draw');
+    expect(stamped.warmup).toBe(true);
+
+    const [first, second] = await store.listShots(session.id);
+    expect(first.intent).toBe('untagged');
+    expect(first.warmup).toBe(false);
+    expect(second.intent).toBe('draw');
+    expect(second.warmup).toBe(true);
+  });
+
+  it('setShotIntent and setShotWarmup retag a persisted shot', async () => {
+    const { store } = await build();
+    const club = await store.createClub({
+      name: '7 Iron',
+      category: 'iron',
+      swingTag: 'full',
+      loftDeg: 34,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    });
+    const session = await store.createSession({
+      name: null,
+      notes: null,
+      startedAt: 1,
+      environment: env,
+    });
+    const shot = await store.insertShot(
+      session.id,
+      club.id,
+      measured('g-1'),
+      null,
+      { intent: 'stock', warmup: true },
+    );
+
+    await store.setShotIntent(shot.id, 'fade');
+    await store.setShotWarmup(shot.id, false);
+    const [read] = await store.listShots(session.id);
+    expect(read.intent).toBe('fade');
+    expect(read.warmup).toBe(false);
   });
 
   it('soft-deletes via the discarded flag', async () => {

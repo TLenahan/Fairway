@@ -29,6 +29,11 @@ export const ConnectionState = z.enum([
   'error',
   'localNetworkDenied',
 ]);
+/* per-shot intent bucket (Insights spec §6.1) — stats key on (club, intent).
+   v1 values; stored as TEXT so future intents stay additive. 'untagged' is
+   the quarantine bucket, never mixed into stock stats. */
+export const ShotIntentSchema = z.enum(['stock', 'draw', 'fade', 'untagged']);
+export type ShotIntent = z.infer<typeof ShotIntentSchema>;
 
 /* map category → sensor mode (single source of truth; used by monitor + store) */
 export const categoryToSensorMode: Record<

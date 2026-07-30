@@ -96,6 +96,8 @@ export const buildShot = (overrides: ShotOverrides = {}): ShotRecord => {
     shotGuid: measured.shotGuid,
     capturedAt: overrides.capturedAt ?? 1700000000000 + counter,
     discarded: overrides.discarded ?? false,
+    intent: 'untagged',
+    warmup: false,
     measured,
     flight: overrides.flight ?? null,
   };

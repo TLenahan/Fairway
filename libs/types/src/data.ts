@@ -1,6 +1,7 @@
 import { AnalysisRecord } from './analysis';
 import { Club } from './club';
 import { DrillRep } from './drill';
+import { ShotIntent } from './enums';
 import { FlightResult } from './flight';
 import { Session } from './session';
 import { MeasuredShot, ShotRecord } from './shot';
@@ -15,24 +16,30 @@ export interface DataStore {
   updateClub(id: string, patch: Partial<Club>): Promise<Club>;
   listClubs(opts?: { includeArchived?: boolean }): Promise<Club[]>;
   archiveClub(id: string): Promise<void>;
-  // sessions
+  // sessions — defaultIntent optional so pre-Insights callers keep compiling
   createSession(
-    input: Omit<Session, 'id' | 'createdAt' | 'endedAt'>,
+    input: Omit<Session, 'id' | 'createdAt' | 'endedAt' | 'defaultIntent'> & {
+      defaultIntent?: ShotIntent;
+    },
   ): Promise<Session>;
   endSession(id: string): Promise<Session>;
   getSession(id: string): Promise<Session | null>;
   listSessions(): Promise<Session[]>;
-  // shots
+  // shots — opts optional so pre-Insights callers keep compiling
   insertShot(
     sessionId: string,
     clubId: string,
     m: MeasuredShot,
     flight: FlightResult | null,
+    opts?: { intent?: ShotIntent; warmup?: boolean },
   ): Promise<ShotRecord>;
   attachFlight(shotId: string, flight: FlightResult): Promise<void>;
   /** Late-attach wrist mechanics once a swing is correlated to this shot. */
   attachWrist(shotId: string, wrist: WristShot): Promise<void>;
   setShotDiscarded(shotId: string, discarded: boolean): Promise<void>;
+  /** Per-shot intent override (or warmup re-tag into a real bucket). */
+  setShotIntent(shotId: string, intent: ShotIntent): Promise<void>;
+  setShotWarmup(shotId: string, warmup: boolean): Promise<void>;
   listShots(sessionId: string): Promise<ShotRecord[]>;
   listShotsByClub(
     clubId: string,

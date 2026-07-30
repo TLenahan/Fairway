@@ -135,13 +135,14 @@ export function createDataStore(
     async createSession(input) {
       const session: Session = {
         ...input,
+        defaultIntent: input.defaultIntent ?? 'stock',
         id: newId(),
         createdAt: now(),
         endedAt: null,
       };
       await db.runAsync(
-        `INSERT INTO sessions (id, name, notes, started_at, ended_at, altitude_m, temperature_c, env_preset, created_at)
-         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, name, notes, started_at, ended_at, altitude_m, temperature_c, env_preset, default_intent, created_at)
+         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
         [
           session.id,
           session.name,
@@ -150,6 +151,7 @@ export function createDataStore(
           session.environment.altitudeM,
           session.environment.temperatureC,
           session.environment.presetName,
+          session.defaultIntent,
           session.createdAt,
         ],
       );
@@ -185,7 +187,7 @@ export function createDataStore(
     },
 
     /* ── shots ── */
-    async insertShot(sessionId, clubId, m: MeasuredShot, flight) {
+    async insertShot(sessionId, clubId, m: MeasuredShot, flight, insertOpts) {
       const record: ShotRecord = {
         id: newId(),
         sessionId,
@@ -193,6 +195,8 @@ export function createDataStore(
         shotGuid: m.shotGuid,
         capturedAt: now(),
         discarded: false,
+        intent: insertOpts?.intent ?? 'untagged',
+        warmup: insertOpts?.warmup ?? false,
         measured: m,
         flight,
       };
@@ -203,6 +207,8 @@ export function createDataStore(
         m.shotGuid,
         record.capturedAt,
         m.impactTimestamp,
+        record.intent,
+        record.warmup ? 1 : 0,
         m.handedness,
         m.ball.speedMs,
         m.ball.launchAngleDeg,
@@ -246,6 +252,7 @@ export function createDataStore(
         await db.runAsync(
           `INSERT INTO shots (
              id, session_id, club_id, shot_guid, captured_at, impact_timestamp,
+             intent, warmup,
              discarded, handedness,
              ball_speed_ms, launch_angle_deg, launch_direction_deg,
              backspin_rpm, sidespin_rpm, rollspin_rpm,
@@ -259,7 +266,7 @@ export function createDataStore(
              carry_m, total_m, apex_m, descent_deg, flight_time_s, offline_m,
              curve_m, rollout_m, landing_x_m, landing_z_m, flight_path_json,
              raw_json
-           ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           params,
         );
       } catch (err) {
@@ -311,6 +318,20 @@ export function createDataStore(
     async setShotDiscarded(shotId, discarded) {
       await db.runAsync('UPDATE shots SET discarded = ? WHERE id = ?', [
         discarded ? 1 : 0,
+        shotId,
+      ]);
+    },
+
+    async setShotIntent(shotId, intent) {
+      await db.runAsync('UPDATE shots SET intent = ? WHERE id = ?', [
+        intent,
+        shotId,
+      ]);
+    },
+
+    async setShotWarmup(shotId, warmup) {
+      await db.runAsync('UPDATE shots SET warmup = ? WHERE id = ?', [
+        warmup ? 1 : 0,
         shotId,
       ]);
     },

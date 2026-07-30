@@ -14,6 +14,7 @@ import {
   LiveSlice,
   MeasuredShot,
   MonitorService,
+  ShotIntent,
   ShotRecord,
   WristService,
   WristShot,
@@ -26,6 +27,10 @@ import { createStore } from 'zustand/vanilla';
     within this window; buffered events older than PRUNE_MS are dropped. */
 const JOIN_WINDOW_MS = 1500;
 const PRUNE_MS = 5000;
+
+/** First shots of a session are warmup (Insights §6.1) — stamped at capture,
+    excluded from stats, re-taggable via setShotWarmup. */
+export const WARMUP_SHOT_COUNT = 5;
 
 export type FairwayState = ConnectionSlice &
   LiveSlice &
@@ -92,14 +97,16 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     /* ── ActiveSessionSlice ── */
     session: null,
     activeClub: null,
-    async startSession(env: Environment) {
+    activeIntent: 'stock',
+    async startSession(env: Environment, defaultIntent: ShotIntent = 'stock') {
       const session = await data.createSession({
         name: null,
         notes: null,
         startedAt: Date.now(),
         environment: env,
+        defaultIntent,
       });
-      set({ session, sessionShots: [] });
+      set({ session, sessionShots: [], activeIntent: defaultIntent });
     },
     async endSession() {
       const current = get().session;
@@ -117,6 +124,25 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
       const club = await data.createClub(input);
       await activateClub(club);
       return club;
+    },
+    setActiveIntent(intent: ShotIntent) {
+      set({ activeIntent: intent });
+    },
+    async setShotIntent(shotId: string, intent: ShotIntent) {
+      await data.setShotIntent(shotId, intent);
+      set({
+        sessionShots: get().sessionShots.map((s) =>
+          s.id === shotId ? { ...s, intent } : s,
+        ),
+      });
+    },
+    async setShotWarmup(shotId: string, warmup: boolean) {
+      await data.setShotWarmup(shotId, warmup);
+      set({
+        sessionShots: get().sessionShots.map((s) =>
+          s.id === shotId ? { ...s, warmup } : s,
+        ),
+      });
     },
 
     /* ── WristSlice ── */
@@ -309,7 +335,14 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
             launchConditionsFrom(measured),
             session.environment,
           );
-    const record = await data.insertShot(session.id, club.id, measured, flight);
+    // Stamp intent + warmup at capture (Insights §6.1): the active intent,
+    // and warmup for the session's first shots — discarded shots don't count
+    // toward the warmup window.
+    const priorShots = get().sessionShots.filter((s) => !s.discarded).length;
+    const record = await data.insertShot(session.id, club.id, measured, flight, {
+      intent: get().activeIntent,
+      warmup: priorShots < WARMUP_SHOT_COUNT,
+    });
     set({
       lastShot: measured,
       sessionShots: [record, ...get().sessionShots],

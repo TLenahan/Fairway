@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { ShotIntentSchema } from './enums';
+
 export const EnvironmentSchema = z.object({
   altitudeM: z.number(),
   temperatureC: z.number().nullable(),
@@ -14,6 +16,9 @@ export const SessionSchema = z.object({
   startedAt: z.number(),
   endedAt: z.number().nullable(),
   environment: EnvironmentSchema,
+  // session-level intent; shots stamp it at capture (per-shot override wins).
+  // Defaulted so sessions persisted before Insights still parse.
+  defaultIntent: ShotIntentSchema.default('stock'),
   createdAt: z.number(),
 });
 export type Session = z.infer<typeof SessionSchema>;

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { Handedness } from './enums';
+import { Handedness, ShotIntentSchema } from './enums';
 import { FlightResultSchema } from './flight';
 import { WristShotSchema } from './wrist';
 
@@ -102,6 +102,10 @@ export const ShotRecordSchema = z.object({
   shotGuid: z.string(),
   capturedAt: z.number(),
   discarded: z.boolean(),
+  // intent bucket stamped at capture (Insights §6.1); 'untagged' = quarantine
+  intent: ShotIntentSchema.default('untagged'),
+  // first ~5 shots of a session are warmup — excluded from stats, re-taggable
+  warmup: z.boolean().default(false),
   measured: MeasuredShotSchema,
   flight: FlightResultSchema.nullable(), // null until flight-model runs
   // Wrist mechanics joined from @golf/wrist by impact-arrival time. Absent when

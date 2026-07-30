@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Club } from './club';
 import { DiscoveredDevice } from './device';
 import { DrillPlan, DrillRepFeedback, DrillRung } from './drill';
-import { ConnectionState } from './enums';
+import { ConnectionState, ShotIntent } from './enums';
 import { Environment, Session } from './session';
 import { MeasuredShot, ShotRecord } from './shot';
 import { WristConnectionState, WristDevice, WristHold } from './wrist';
@@ -24,7 +24,10 @@ export interface LiveSlice {
 export interface ActiveSessionSlice {
   session: Session | null;
   activeClub: Club | null;
-  startSession(env: Environment): Promise<void>;
+  /** intent stamped onto every incoming shot (Insights §6.1); starts at the
+      session's defaultIntent, changeable mid-session via setActiveIntent */
+  activeIntent: ShotIntent;
+  startSession(env: Environment, defaultIntent?: ShotIntent): Promise<void>;
   endSession(): Promise<void>;
   // re-tags; reconfigures sensor only if mode changes
   selectClub(clubId: string): Promise<void>;
@@ -32,6 +35,10 @@ export interface ActiveSessionSlice {
   createClub(
     input: Omit<Club, 'id' | 'createdAt' | 'sensorMode'>,
   ): Promise<Club>;
+  setActiveIntent(intent: ShotIntent): void;
+  /** per-shot override / warmup re-tag — persists, then patches sessionShots */
+  setShotIntent(shotId: string, intent: ShotIntent): Promise<void>;
+  setShotWarmup(shotId: string, warmup: boolean): Promise<void>;
 }
 
 /** Wrist sensor connection, mirrored into the store like ConnectionSlice.

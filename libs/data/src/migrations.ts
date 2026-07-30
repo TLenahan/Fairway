@@ -211,6 +211,21 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 8,
+    async up(db) {
+      // Insights §6.1: stats bucket on (club, intent). intent is TEXT (no
+      // CHECK) so future intents stay additive; 'untagged' is the quarantine
+      // bucket. warmup = first ~5 shots of a session, excluded from stats,
+      // re-taggable. Plain ALTERs (no IF NOT EXISTS exists for ADD COLUMN) —
+      // same crash-window trade-off as v2–v4/v6, accepted there too.
+      await db.execAsync(`
+        ALTER TABLE sessions ADD COLUMN default_intent TEXT NOT NULL DEFAULT 'stock';
+        ALTER TABLE shots ADD COLUMN intent TEXT NOT NULL DEFAULT 'untagged';
+        ALTER TABLE shots ADD COLUMN warmup INTEGER NOT NULL DEFAULT 0;
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {
