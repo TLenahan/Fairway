@@ -13,7 +13,7 @@ feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 | 1 — Mac hub MVP | **Code-complete.** Awaiting first live-hardware run + historical import (needs the phone's `fairway.db`) |
 | 2 — Capture clients + clips | Not started. **No batch mode (Tim).** Ring-buffer spike is the mandatory first task; GoPro HERO 12 may join per GOPRO_CAPTURE.md bench |
 | 3 — Pose pipeline | Not started (Python/uv worker, MediaPipe) |
-| 4 — Analytics engine | **Done.** `@golf/insights`, 115 tests incl. planted-effect acceptance + negative control |
+| 4 — Analytics engine | **Done.** `@golf/insights`, 117 tests incl. planted-effect acceptance + negative control |
 | 5 — Insights UI / drills / LLM / MCP | Coach narrative layer + findings feed done (early); drill loop and MCP server not started |
 | 6 — Address station | Not started. Vibrate bench parked (harness recipe in memory; hardware unverified) |
 
@@ -38,8 +38,8 @@ discovery; HackMotion candidates appear for click-to-connect
 
 **Reform Coach** (Claude Managed Agents): activates when
 `ANTHROPIC_API_KEY` env or `~/.fairway/anthropic_api_key` exists. On session
-end the hub builds the daily export (contract v3: shots + intent/warmup +
-flight + wrist coach blocks) and runs the coach agent — no-egress sandbox,
+end the hub builds the daily export (contract v4: shots + intent/warmup +
+flight + wrist coach blocks + the engine's insights block) and runs the coach agent — no-egress sandbox,
 cross-day memory store, recap persisted to the `analyses` table. First run
 provisions agent/environment/memory-store into `~/.fairway/coach.json`.
 
