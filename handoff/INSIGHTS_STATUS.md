@@ -14,7 +14,7 @@ feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 | 2 — Capture clients + clips | Not started. **No batch mode (Tim).** Ring-buffer spike is the mandatory first task; GoPro HERO 12 may join per GOPRO_CAPTURE.md bench |
 | 3 — Pose pipeline | Not started (Python/uv worker, MediaPipe) |
 | 4 — Analytics engine | **Done.** `@golf/insights`, 117 tests incl. planted-effect acceptance + negative control |
-| 5 — Insights UI / drills / LLM / MCP | Coach narrative layer + findings feed done (early); drill loop and MCP server not started |
+| 5 — Insights UI / drills / LLM / MCP | Coach narrative layer, findings feed, and drill library + prescription loop done (early); the loop is not yet *called* by the hub; MCP server not started |
 | 6 — Address station | Not started. Vibrate bench parked (harness recipe in memory; hardware unverified) |
 
 ## What runs today
@@ -52,6 +52,16 @@ decomposition, dispersion index. All thresholds in
 `libs/insights/src/config.ts`; several corridor/margin numbers are tunable
 placeholders pending real-data calibration.
 
+**Drill library + prescription loop** (`@golf/program`): six curated drills
+in `libs/program/content/drills.json` (versioned). `prescribe()` turns
+findings into `TrainingBlock`s — one primitive shared by finding-driven
+prescriptions and calendar program work — gated so a pure bias never earns
+a drill (§6.6) and skipped when a tolerance band cannot be derived from the
+user's own great-shot baseline (§6.10). `evaluateBlock()` graduates only
+when both the target metric moved and the linked outcome improved.
+Persisted via migration v9 (`training_blocks`). The coach's drill
+allow-list derives from this library, so the two can never diverge.
+
 **Replay harness**: `apps/hub/src/services.spec.ts` drives the whole loop
 headless (real monitor decode on fake TCP/UDP via `@golf/monitor/testing`,
 real wrist service replaying `captures/*.ndjson`, real SQLite). All hub
@@ -72,13 +82,16 @@ logic is developed against it.
 
 ## Next build steps (in order)
 
-1. Historical import once the phone DB lands.
-2. Phase 2: RN capture app — ring-buffer spike first (chunked HEVC
+1. Call the prescription loop from the hub (compute on session end,
+   persist blocks, evaluate open ones, surface them in the UI and coach
+   payload) — the library and loop exist but nothing invokes them yet.
+2. Historical import once the phone DB lands.
+3. Phase 2: RN capture app — ring-buffer spike first (chunked HEVC
    segments vs native AVAssetWriter), live per-shot clips only, no batch;
    GoPro path folds in if the bench passes.
-3. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics.
-4. Phase 5 remainder: drill-library content files + prescription loop, MCP
-   server (`query_shots`, `get_baseline`, `get_findings`, …).
+4. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics.
+5. Phase 5 remainder: MCP server (`query_shots`, `get_baseline`,
+   `get_findings`, …).
 
 ## Decisions log (with rationale, chronological)
 
@@ -109,8 +122,9 @@ logic is developed against it.
   settings surface pending.
 - Coach recap not yet shown in the hub UI (persisted to DB only).
 - No CI. `yarn nx run-many -t test,typecheck,lint` is the manual gate
-  (15 projects, green as of this commit).
+  (16 projects, 517 tests, green as of this commit).
 - Main-checkout `node_modules` needs `yarn install` after this merge (new
-  packages: `@golf/hub`, `@golf/coach`, `@golf/insights`, SDK deps).
+  packages: `@golf/hub`, `@golf/coach`, `@golf/insights`, `@golf/program`,
+  SDK deps).
 - `IMPACT_OFFSET_MS` (wrist coach keyframes) still untuned; needs hardware
   sessions.
