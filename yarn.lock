@@ -2669,6 +2669,14 @@ __metadata:
   languageName: unknown
   linkType: soft
 
+"@golf/insights@workspace:libs/insights":
+  version: 0.0.0-use.local
+  resolution: "@golf/insights@workspace:libs/insights"
+  dependencies:
+    "@golf/types": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
 "@golf/monitor@workspace:*, @golf/monitor@workspace:libs/monitor":
   version: 0.0.0-use.local
   resolution: "@golf/monitor@workspace:libs/monitor"
