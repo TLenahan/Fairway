@@ -86,6 +86,11 @@ export interface InsightsConfig {
     minShots: number;
   };
   carryDecomposition: { minShots: number };
+  wrist: {
+    /** peak-down extension exceeding top extension by this many degrees is
+        the cast/flip signature (toInsightShot's flipFlag) */
+    flipExtensionMarginDeg: number;
+  };
 }
 
 export const DEFAULT_INSIGHTS_CONFIG: InsightsConfig = {
@@ -156,4 +161,5 @@ export const DEFAULT_INSIGHTS_CONFIG: InsightsConfig = {
     minShots: 15,
   },
   carryDecomposition: { minShots: 15 },
+  wrist: { flipExtensionMarginDeg: 3 },
 };

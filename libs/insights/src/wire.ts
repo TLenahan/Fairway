@@ -2,13 +2,13 @@ import { Club, ShotIntent, ShotRecord } from '@golf/types';
 
 import { DEFAULT_INSIGHTS_CONFIG, InsightsConfig } from './config';
 import { analyzeShots } from './engine';
+import { toInsightShot } from './projection';
 import {
   CertificationStatus,
   ChangepointVerdict,
   FailureMode,
   InsightMetricKey,
   InsightShot,
-  toInsightShot,
 } from './types';
 
 /**

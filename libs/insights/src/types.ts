@@ -1,4 +1,4 @@
-import { Handedness, ShotIntent, ShotRecord } from '@golf/types';
+import { Handedness, ShotIntent } from '@golf/types';
 import { z } from 'zod';
 
 /**
@@ -49,41 +49,6 @@ export interface InsightShot {
   wristExtTop: number | null;
   wristExtImpact: number | null;
   wristExtPeakDown: number | null;
-}
-
-export function toInsightShot(
-  shot: ShotRecord,
-  clubCategory: InsightShot['clubCategory'],
-): InsightShot {
-  return {
-    id: shot.id,
-    sessionId: shot.sessionId,
-    clubId: shot.clubId,
-    clubCategory,
-    intent: shot.intent,
-    warmup: shot.warmup,
-    discarded: shot.discarded,
-    ts: shot.capturedAt,
-    handedness: shot.measured.handedness,
-    smash: shot.measured.smashFactor,
-    ballSpeedMs: shot.measured.ball.speedMs,
-    clubSpeedMs: shot.measured.club.speedMs,
-    launchDeg: shot.measured.ball.launchAngleDeg,
-    launchDirDeg: shot.measured.ball.launchDirectionDeg,
-    backspinRpm: shot.measured.ball.backspinRpm,
-    sidespinRpm: shot.measured.ball.sidespinRpm,
-    carryM: shot.flight?.carryM ?? null,
-    totalM: shot.flight?.totalM ?? null,
-    apexM: shot.flight?.apexM ?? null,
-    offlineM: shot.flight?.offlineM ?? null,
-    curveM: shot.flight?.curveM ?? null,
-    strikeHMm: shot.measured.club.faceImpactHMm,
-    strikeVMm: shot.measured.club.faceImpactVMm,
-    flipFlag: null,
-    wristExtTop: shot.wrist?.top.angles.extensionDeg ?? null,
-    wristExtImpact: shot.wrist?.impact.angles.extensionDeg ?? null,
-    wristExtPeakDown: null,
-  };
 }
 
 /** Bucket key — the unit of every baseline and finding (§6.1). */

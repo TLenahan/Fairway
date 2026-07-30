@@ -3,6 +3,7 @@
 // it never computes them.
 export * from './types';
 export * from './config';
+export * from './projection';
 export * from './stats';
 export * from './great';
 export * from './baselines';
