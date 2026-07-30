@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "hub",
+  "sourceRoot": "apps/hub/src",
+  "projectType": "application",
+  "tags": ["scope:golf", "type:app", "app:hub"],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node -r @swc-node/register apps/hub/src/main.ts",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
+}

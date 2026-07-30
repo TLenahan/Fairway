@@ -1,0 +1,21 @@
+{
+  "name": "@golf/hub",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/main.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@golf/analytics": "workspace:*",
+    "@golf/data": "workspace:*",
+    "@golf/drill": "workspace:*",
+    "@golf/flight-model": "workspace:*",
+    "@golf/monitor": "workspace:*",
+    "@golf/store": "workspace:*",
+    "@golf/types": "workspace:*",
+    "@golf/wrist": "workspace:*",
+    "@stoprocent/noble": "^2.6.0",
+    "better-sqlite3": "^12.2.0"
+  }
+}
