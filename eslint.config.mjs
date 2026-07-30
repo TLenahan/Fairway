@@ -52,8 +52,17 @@ export default [
             { sourceTag: 'lib:analytics', onlyDependOnLibsWithTags: ['lib:types'] },
             { sourceTag: 'lib:insights', onlyDependOnLibsWithTags: ['lib:types'] },
             {
+              sourceTag: 'lib:program',
+              onlyDependOnLibsWithTags: ['lib:types', 'lib:insights'],
+            },
+            {
               sourceTag: 'lib:coach',
-              onlyDependOnLibsWithTags: ['lib:types', 'lib:analytics', 'lib:insights'],
+              onlyDependOnLibsWithTags: [
+                'lib:types',
+                'lib:analytics',
+                'lib:insights',
+                'lib:program',
+              ],
             },
             { sourceTag: 'lib:data', onlyDependOnLibsWithTags: ['lib:types'] },
             { sourceTag: 'lib:viz', onlyDependOnLibsWithTags: ['lib:types'] },

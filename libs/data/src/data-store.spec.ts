@@ -1,4 +1,10 @@
-import { DrillRep, FlightResult, MeasuredShot, WristShot } from '@golf/types';
+import {
+  DrillRep,
+  FlightResult,
+  MeasuredShot,
+  TrainingBlock,
+  WristShot,
+} from '@golf/types';
 
 import { createDataStore, DuplicateShotError } from './data-store';
 import { runMigrations } from './migrations';
@@ -121,6 +127,25 @@ const drillRepInput = (
   targetAngleDeg: null,
   outcome: 'calibrating',
   carryM: null,
+  ...overrides,
+});
+
+/** A finding-sourced block by default; overrides make it a program block. */
+const trainingBlockInput = (
+  overrides: Partial<Omit<TrainingBlock, 'id' | 'createdAt'>> = {},
+): Omit<TrainingBlock, 'id' | 'createdAt'> => ({
+  source: 'finding',
+  findingKey: 'club-1|stock|thin|carryM',
+  drillId: 'ladder',
+  drillVersion: 1,
+  clubId: null,
+  intent: 'stock',
+  tolerance: null,
+  remeasureShots: 20,
+  status: 'active',
+  startedAt: 500,
+  resolvedAt: null,
+  resolutionNote: null,
   ...overrides,
 });
 
@@ -600,5 +625,120 @@ describe('createDataStore', () => {
     const listed = await store.listWristSwings(session.id);
     expect(listed).toEqual([earlier, later]);
     expect(await store.listWristSwings('nope')).toEqual([]);
+  });
+
+  it('round-trips training blocks — the issued tolerance band survives verbatim', async () => {
+    const { store } = await build();
+    const wedge = await store.createClub({
+      name: '56°',
+      category: 'wedge',
+      swingTag: 'full',
+      loftDeg: 56,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    });
+
+    // finding-sourced: bucketed, with the band derived from the user's own
+    // great-shot baseline at issue time (§6.10)
+    const prescribed = await store.insertTrainingBlock(
+      trainingBlockInput({
+        findingKey: `${wedge.id}|stock|thin|carryM`,
+        clubId: wedge.id,
+        tolerance: {
+          metric: 'carryM',
+          center: 74.2,
+          halfWidth: 3.5,
+          nGreat: 12,
+        },
+      }),
+    );
+    // program-sourced: no finding, no bucket, no band
+    const planned = await store.insertTrainingBlock(
+      trainingBlockInput({
+        source: 'program',
+        findingKey: null,
+        drillId: 'gate-tempo',
+        drillVersion: 2,
+        clubId: null,
+        intent: null,
+        remeasureShots: 30,
+        startedAt: 600,
+      }),
+    );
+
+    const blocks = await store.listTrainingBlocks();
+    expect(blocks).toEqual([prescribed, planned]);
+
+    expect(blocks[0].source).toBe('finding');
+    expect(blocks[0].findingKey).toBe(`${wedge.id}|stock|thin|carryM`);
+    expect(blocks[0].clubId).toBe(wedge.id);
+    expect(blocks[0].intent).toBe('stock');
+    expect(blocks[0].drillVersion).toBe(1);
+    expect(blocks[0].remeasureShots).toBe(20);
+    expect(blocks[0].tolerance).toEqual({
+      metric: 'carryM',
+      center: 74.2,
+      halfWidth: 3.5,
+      nGreat: 12,
+    });
+    expect(blocks[0].resolvedAt).toBeNull();
+    expect(blocks[0].resolutionNote).toBeNull();
+
+    expect(blocks[1].findingKey).toBeNull();
+    expect(blocks[1].clubId).toBeNull();
+    expect(blocks[1].intent).toBeNull();
+    expect(blocks[1].tolerance).toBeNull();
+    expect(blocks[1].drillId).toBe('gate-tempo');
+    expect(blocks[1].drillVersion).toBe(2);
+  });
+
+  it('updateTrainingBlockStatus stamps the verdict, resolution time and note', async () => {
+    const { store } = await build();
+    const block = await store.insertTrainingBlock(trainingBlockInput());
+    expect(block.status).toBe('active');
+
+    await store.updateTrainingBlockStatus(
+      block.id,
+      'graduated',
+      9_000,
+      'carry IQR 8.1 → 3.4 yd over 20 shots',
+    );
+    const [read] = await store.listTrainingBlocks();
+    expect(read.status).toBe('graduated');
+    // the caller's timestamp, not the write's clock
+    expect(read.resolvedAt).toBe(9_000);
+    expect(read.resolutionNote).toBe('carry IQR 8.1 → 3.4 yd over 20 shots');
+  });
+
+  it('listTrainingBlocks filters by status and orders by createdAt', async () => {
+    const { store } = await build();
+    const first = await store.insertTrainingBlock(trainingBlockInput());
+    const escalated = await store.insertTrainingBlock(
+      trainingBlockInput({
+        findingKey: 'club-2|stock|thin|carryM',
+        status: 'escalated',
+        resolvedAt: 800,
+        resolutionNote: 'window closed, no movement',
+      }),
+    );
+    const third = await store.insertTrainingBlock(
+      trainingBlockInput({ findingKey: 'club-3|stock|thin|carryM' }),
+    );
+
+    expect(await store.listTrainingBlocks()).toEqual([
+      first,
+      escalated,
+      third,
+    ]);
+    expect(await store.listTrainingBlocks({ status: 'active' })).toEqual([
+      first,
+      third,
+    ]);
+    expect(await store.listTrainingBlocks({ status: 'escalated' })).toEqual([
+      escalated,
+    ]);
+    expect(await store.listTrainingBlocks({ status: 'abandoned' })).toEqual([]);
   });
 });

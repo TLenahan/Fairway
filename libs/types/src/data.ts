@@ -3,6 +3,7 @@ import { Club } from './club';
 import { DrillRep } from './drill';
 import { ShotIntent } from './enums';
 import { FlightResult } from './flight';
+import { TrainingBlock, TrainingBlockStatus } from './program';
 import { Session } from './session';
 import { MeasuredShot, ShotRecord } from './shot';
 import { WristShot, WristSwingRecord } from './wrist';
@@ -67,4 +68,22 @@ export interface DataStore {
   ): Promise<void>;
   /** All reps for these wedges across all time, createdAt ascending. */
   listDrillReps(clubIds: string[]): Promise<DrillRep[]>;
+  // training blocks (§6.11 / §6.12 rule 4 — ONE primitive for both
+  // program-planned work and finding-driven prescriptions; the drill itself
+  // lives in the curated library and is referenced by id + version, never
+  // copied here)
+  insertTrainingBlock(
+    input: Omit<TrainingBlock, 'id' | 'createdAt'>,
+  ): Promise<TrainingBlock>;
+  /** Close (or re-open) a block: `resolvedAt`/`note` are null while active. */
+  updateTrainingBlockStatus(
+    id: string,
+    status: TrainingBlockStatus,
+    resolvedAt: number | null,
+    note: string | null,
+  ): Promise<void>;
+  /** createdAt ascending; unfiltered returns every block. */
+  listTrainingBlocks(opts?: {
+    status?: TrainingBlockStatus;
+  }): Promise<TrainingBlock[]>;
 }

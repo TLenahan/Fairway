@@ -11,6 +11,8 @@ import {
   Session,
   ShotIntent,
   ShotRecord,
+  TrainingBlock,
+  TrainingBlockStatus,
   WristService,
   WristServiceEvents,
   WristShot,
@@ -110,6 +112,7 @@ class FakeData implements DataStore {
   shots: ShotRecord[] = [];
   drillReps: DrillRep[] = [];
   wristSwings: WristSwingRecord[] = [];
+  trainingBlocks: TrainingBlock[] = [];
   private nextId = 1;
   private nextCreatedAt = 1;
 
@@ -257,6 +260,39 @@ class FakeData implements DataStore {
     return this.drillReps
       .filter((r) => clubIds.includes(r.clubId))
       .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  // Training blocks are issued by the hub, never by the store pipeline; the
+  // fake implements them only to satisfy the DataStore contract.
+  async insertTrainingBlock(
+    input: Omit<TrainingBlock, 'id' | 'createdAt'>,
+  ): Promise<TrainingBlock> {
+    const created: TrainingBlock = {
+      ...input,
+      id: `block-${this.nextId++}`,
+      createdAt: this.nextCreatedAt++,
+    };
+    this.trainingBlocks.push(created);
+    return created;
+  }
+  async updateTrainingBlockStatus(
+    id: string,
+    status: TrainingBlockStatus,
+    resolvedAt: number | null,
+    note: string | null,
+  ): Promise<void> {
+    const block = this.trainingBlocks.find((b) => b.id === id);
+    if (!block) throw new Error('missing');
+    block.status = status;
+    block.resolvedAt = resolvedAt;
+    block.resolutionNote = note;
+  }
+  async listTrainingBlocks(opts?: {
+    status?: TrainingBlockStatus;
+  }): Promise<TrainingBlock[]> {
+    return opts?.status === undefined
+      ? [...this.trainingBlocks]
+      : this.trainingBlocks.filter((b) => b.status === opts.status);
   }
 }
 

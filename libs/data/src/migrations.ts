@@ -226,6 +226,49 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 9,
+    async up(db) {
+      // Training blocks (§6.11 `prescriptions`, generalized to the ONE
+      // TrainingBlock primitive of §6.12 rule 4): calendar-planned work and
+      // finding-driven prescriptions share a table so scheduling, execution
+      // and the re-measure loop are written once. `source` is the only thing
+      // that differs, and finding_key is NULL for program-sourced blocks.
+      //
+      // drill_id/drill_version reference the curated library (@golf/program,
+      // §6.12 rule 1) — drill CONTENT is versioned in the repo, never copied
+      // here, so a block records only which version it was issued against.
+      // tolerance_json is the band derived from the user's OWN baseline at
+      // issue time (§6.10), frozen so a later verdict judges against the band
+      // that was actually in force, not today's recomputed one.
+      //
+      // The two indexes serve the only two hot reads: the active-block list
+      // (status) and "does this finding already have a block?" (finding_key).
+      // IF NOT EXISTS: the runner bumps user_version in a separate statement,
+      // so a crash between the two must leave a re-runnable migration (same
+      // reasoning as v7).
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS training_blocks (
+          id TEXT PRIMARY KEY,
+          source TEXT NOT NULL,
+          finding_key TEXT,
+          drill_id TEXT NOT NULL,
+          drill_version INTEGER NOT NULL,
+          club_id TEXT REFERENCES clubs(id),
+          intent TEXT,
+          tolerance_json TEXT,
+          remeasure_shots INTEGER NOT NULL,
+          status TEXT NOT NULL,
+          started_at INTEGER NOT NULL,
+          resolved_at INTEGER,
+          resolution_note TEXT,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_training_blocks_status ON training_blocks(status);
+        CREATE INDEX IF NOT EXISTS idx_training_blocks_finding ON training_blocks(finding_key);
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {

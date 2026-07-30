@@ -8,6 +8,7 @@ import {
   MeasuredShot,
   Session,
   ShotRecord,
+  TrainingBlock,
   WristSwingRecord,
 } from '@golf/types';
 
@@ -18,12 +19,14 @@ import {
   mapDrillRepRow,
   mapSessionRow,
   mapShotRow,
+  mapTrainingBlockRow,
   mapWristSwingRow,
   AnalysisRow,
   ClubRow,
   DrillRepRow,
   SessionRow,
   ShotRow,
+  TrainingBlockRow,
   WristSwingRow,
 } from './rows';
 
@@ -463,6 +466,60 @@ export function createDataStore(
         clubIds,
       );
       return rows.map(mapDrillRepRow);
+    },
+
+    /* ── training blocks ── */
+    async insertTrainingBlock(input) {
+      const block: TrainingBlock = { ...input, id: newId(), createdAt: now() };
+      await db.runAsync(
+        `INSERT INTO training_blocks (id, source, finding_key, drill_id,
+           drill_version, club_id, intent, tolerance_json, remeasure_shots,
+           status, started_at, resolved_at, resolution_note, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          block.id,
+          block.source,
+          block.findingKey,
+          block.drillId,
+          block.drillVersion,
+          block.clubId,
+          block.intent,
+          // the band is frozen as issued (§6.10) — stringify, never recompute
+          block.tolerance === null ? null : JSON.stringify(block.tolerance),
+          block.remeasureShots,
+          block.status,
+          block.startedAt,
+          block.resolvedAt,
+          block.resolutionNote,
+          block.createdAt,
+        ],
+      );
+      return block;
+    },
+
+    async updateTrainingBlockStatus(id, status, resolvedAt, note) {
+      // resolvedAt is a parameter, not now(): the verdict is stamped with the
+      // time of the shot that closed the re-measure window, not of the write.
+      await db.runAsync(
+        `UPDATE training_blocks SET status = ?, resolved_at = ?, resolution_note = ?
+         WHERE id = ?`,
+        [status, resolvedAt, note, id],
+      );
+    },
+
+    async listTrainingBlocks(listOpts) {
+      if (listOpts?.status) {
+        const rows = await db.getAllAsync<TrainingBlockRow>(
+          `SELECT * FROM training_blocks WHERE status = ?
+           ORDER BY created_at ASC`,
+          [listOpts.status],
+        );
+        return rows.map(mapTrainingBlockRow);
+      }
+      const rows = await db.getAllAsync<TrainingBlockRow>(
+        'SELECT * FROM training_blocks ORDER BY created_at ASC',
+      );
+      return rows.map(mapTrainingBlockRow);
     },
   };
 }

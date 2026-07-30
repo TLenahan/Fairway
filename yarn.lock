@@ -2562,6 +2562,7 @@ __metadata:
   dependencies:
     "@golf/analytics": "workspace:*"
     "@golf/insights": "workspace:*"
+    "@golf/program": "workspace:*"
     "@golf/types": "workspace:*"
     zod: "npm:^3.24.4"
   languageName: unknown
@@ -2683,6 +2684,16 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@golf/monitor@workspace:libs/monitor"
   dependencies:
+    "@golf/types": "workspace:*"
+    zod: "npm:^3.24.4"
+  languageName: unknown
+  linkType: soft
+
+"@golf/program@workspace:*, @golf/program@workspace:libs/program":
+  version: 0.0.0-use.local
+  resolution: "@golf/program@workspace:libs/program"
+  dependencies:
+    "@golf/insights": "workspace:*"
     "@golf/types": "workspace:*"
     zod: "npm:^3.24.4"
   languageName: unknown

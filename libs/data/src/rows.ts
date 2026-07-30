@@ -1,6 +1,7 @@
 import {
   AnalysisRecord,
   AnalysisRecordSchema,
+  BlockToleranceSchema,
   Club,
   ClubSchema,
   DrillRep,
@@ -9,6 +10,8 @@ import {
   SessionSchema,
   ShotRecord,
   ShotRecordSchema,
+  TrainingBlock,
+  TrainingBlockSchema,
   WristSwingRecord,
   WristSwingRecordSchema,
 } from '@golf/types';
@@ -281,6 +284,52 @@ export function mapWristSwingRow(row: WristSwingRow): WristSwingRecord {
     sessionId: row.session_id,
     tImpactMs: row.t_impact_ms,
     coach: JSON.parse(row.coach_json) as unknown,
+    createdAt: row.created_at,
+  });
+}
+
+export interface TrainingBlockRow {
+  id: string;
+  source: string;
+  finding_key: string | null;
+  drill_id: string;
+  drill_version: number;
+  club_id: string | null;
+  intent: string | null;
+  tolerance_json: string | null;
+  remeasure_shots: number;
+  status: string;
+  started_at: number;
+  resolved_at: number | null;
+  resolution_note: string | null;
+  created_at: number;
+}
+
+/**
+ * Column view → `TrainingBlock`. tolerance_json is validated through
+ * `BlockToleranceSchema` on the way out rather than trusted as JSON: the band
+ * is what a verdict is judged against (§6.10), so a corrupt one must fail
+ * loudly instead of silently graduating or escalating a block. A NULL band
+ * stays `null` — a program block that trains a feel, not a number.
+ */
+export function mapTrainingBlockRow(row: TrainingBlockRow): TrainingBlock {
+  return TrainingBlockSchema.parse({
+    id: row.id,
+    source: row.source,
+    findingKey: row.finding_key,
+    drillId: row.drill_id,
+    drillVersion: row.drill_version,
+    clubId: row.club_id,
+    intent: row.intent,
+    tolerance:
+      row.tolerance_json === null
+        ? null
+        : BlockToleranceSchema.parse(JSON.parse(row.tolerance_json)),
+    remeasureShots: row.remeasure_shots,
+    status: row.status,
+    startedAt: row.started_at,
+    resolvedAt: row.resolved_at,
+    resolutionNote: row.resolution_note,
     createdAt: row.created_at,
   });
 }

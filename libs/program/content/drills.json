@@ -1,0 +1,101 @@
+{
+  "libraryVersion": 1,
+  "drills": [
+    {
+      "id": "wedge-distance-control",
+      "version": 1,
+      "name": "Wedge ladder",
+      "summary": "Nine stock wedge shots — three carry rungs on each of three wedges — trained against your own learned lead-wrist top-of-backswing angle for each rung.",
+      "targets": ["wristExtTop", "carryM"],
+      "addresses": ["short", "long"],
+      "protocol": "Run the drill screen's 3x3 matrix. Hit each rung to its cue: hum the swing song, hold at address until the meter says GO, and let the backswing length — not effort — set the carry. Judge nothing by feel; the rep is scored on the wrist angle at the top against that rung's learned target.",
+      "tolerance": { "metric": "wristExtTop", "iqrMultiple": 1 },
+      "graduation": {
+        "remeasureShots": 27,
+        "metricGapClosed": 0.5,
+        "outcomeImprovement": 0.25
+      },
+      "clubCategories": ["wedge"]
+    },
+    {
+      "id": "flexion-through-impact",
+      "version": 1,
+      "name": "Flat lead wrist through impact",
+      "summary": "Trains the lead wrist to keep its flexion into the ball instead of adding extension in transition — the casting and flipping signature.",
+      "targets": ["wristExtPeakDown", "wristExtImpact"],
+      "addresses": ["low-smash", "short"],
+      "protocol": "Half swings at half speed, no ball, feeling the lead wrist stay flat or slightly bowed from the top down to the ball. Watch the wrist trace, not the shot. Add the ball back only once ten straight rehearsals hold the angle, then hit ten shots at three-quarter speed keeping the same feel.",
+      "tolerance": { "metric": "wristExtPeakDown", "iqrMultiple": 1 },
+      "graduation": {
+        "remeasureShots": 30,
+        "metricGapClosed": 0.5,
+        "outcomeImprovement": 0.25
+      },
+      "clubCategories": []
+    },
+    {
+      "id": "start-line-gate",
+      "version": 1,
+      "name": "Start-line gate",
+      "summary": "Two tees a club-head wider than the ball, a few feet down the target line — immediate feedback on where the ball actually starts.",
+      "targets": ["launchDirDeg"],
+      "addresses": ["pull", "push"],
+      "protocol": "Set the gate about six feet ahead, aligned to your intended start line for this shot shape. Hit ten balls. A ball through the gate counts; a ball that clips a tee does not. Do not chase the finish — the only thing being trained is the first thirty yards.",
+      "tolerance": { "metric": "launchDirDeg", "iqrMultiple": 1 },
+      "graduation": {
+        "remeasureShots": 30,
+        "metricGapClosed": 0.5,
+        "outcomeImprovement": 0.3
+      },
+      "clubCategories": []
+    },
+    {
+      "id": "strike-centering",
+      "version": 1,
+      "name": "Centre-strike spray",
+      "summary": "Face spray or foot powder to make the strike pattern visible, so heel and toe misses stop hiding inside an acceptable-looking carry.",
+      "targets": ["strikeHMm", "strikeVMm", "smash"],
+      "addresses": ["low-smash"],
+      "protocol": "Spray the face. Hit five shots, then read the pattern before adjusting anything. Move only one thing at a time — stance distance first, then ball position — and re-spray after every five. Stop when the pattern clusters, not when a shot feels good.",
+      "tolerance": { "metric": "strikeHMm", "iqrMultiple": 1 },
+      "graduation": {
+        "remeasureShots": 25,
+        "metricGapClosed": 0.5,
+        "outcomeImprovement": 0.3
+      },
+      "clubCategories": []
+    },
+    {
+      "id": "tempo-ladder",
+      "version": 1,
+      "name": "Speed ladder",
+      "summary": "Trains a repeatable delivery speed when club speed is swinging around from shot to shot and dragging strike quality with it.",
+      "targets": ["clubSpeedMs"],
+      "addresses": ["low-smash", "short", "long"],
+      "protocol": "Three shots at what feels like 70% effort, three at 80%, three at 90%, then repeat the ladder twice. Watch club speed after each set of three and aim for the three within a set to land on top of each other — consistency inside a rung matters more than hitting a particular number.",
+      "tolerance": { "metric": "clubSpeedMs", "iqrMultiple": 1 },
+      "graduation": {
+        "remeasureShots": 27,
+        "metricGapClosed": 0.5,
+        "outcomeImprovement": 0.25
+      },
+      "clubCategories": []
+    },
+    {
+      "id": "curve-control",
+      "version": 1,
+      "name": "Face-to-path curve control",
+      "summary": "Deliberately shapes the ball both directions to calibrate how much face-to-path actually produces a given curve for you.",
+      "targets": ["curveM", "sidespinRpm"],
+      "addresses": ["over-curve", "under-curve"],
+      "protocol": "Alternate: one shot curving as much as you can one way, one shot as straight as you can, one shot curving the other way. Ten sets. Read the curve number after each and name what you changed before the next ball — the point is a calibrated dial, not a fix.",
+      "tolerance": { "metric": "curveM", "iqrMultiple": 1 },
+      "graduation": {
+        "remeasureShots": 30,
+        "metricGapClosed": 0.4,
+        "outcomeImprovement": 0.3
+      },
+      "clubCategories": []
+    }
+  ]
+}

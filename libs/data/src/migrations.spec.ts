@@ -5,7 +5,7 @@ describe('migration harness', () => {
   it('migrates a fresh database to the latest version', async () => {
     const db = openTestDatabase();
     const version = await runMigrations(db);
-    expect(version).toBe(8);
+    expect(version).toBe(9);
 
     const tables = await db.getAllAsync<{ name: string }>(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -19,6 +19,7 @@ describe('migration harness', () => {
         'analyses',
         'drill_reps',
         'wrist_swings',
+        'training_blocks',
       ]),
     );
     db.close();
@@ -27,7 +28,7 @@ describe('migration harness', () => {
   it('is idempotent — re-running applies nothing', async () => {
     const db = openTestDatabase();
     await runMigrations(db);
-    await expect(runMigrations(db)).resolves.toBe(8);
+    await expect(runMigrations(db)).resolves.toBe(9);
     db.close();
   });
 
@@ -66,7 +67,7 @@ describe('migration harness', () => {
          '{}'
        )`,
     );
-    await expect(runMigrations(db)).resolves.toBe(8);
+    await expect(runMigrations(db)).resolves.toBe(9);
     const row = await db.getFirstAsync<{ curve_m: number | null }>(
       "SELECT curve_m FROM shots WHERE id = 'x1'",
     );
@@ -148,7 +149,7 @@ describe('migration harness', () => {
          97, 95, 95, 0, 95, 0, 0, 0, 0, '{}'
        )`,
     );
-    await expect(runMigrations(db)).resolves.toBe(8);
+    await expect(runMigrations(db)).resolves.toBe(9);
     const session = await db.getFirstAsync<{ default_intent: string }>(
       "SELECT default_intent FROM sessions WHERE id = 's1'",
     );
@@ -236,6 +237,108 @@ describe('migration harness', () => {
     await expect(insert('b')).rejects.toMatchObject({
       message: expect.stringMatching(/unique/i),
     });
+    db.close();
+  });
+
+  // the exact v9 column set, hand-written from the spec rather than read back
+  // from the migration — a typo in either one has to fail the test
+  const TRAINING_BLOCK_COLUMNS = [
+    'id',
+    'source',
+    'finding_key',
+    'drill_id',
+    'drill_version',
+    'club_id',
+    'intent',
+    'tolerance_json',
+    'remeasure_shots',
+    'status',
+    'started_at',
+    'resolved_at',
+    'resolution_note',
+    'created_at',
+  ];
+
+  it('v9 creates training_blocks with its full column set on a fresh database', async () => {
+    const db = openTestDatabase();
+    await runMigrations(db);
+
+    const columns = await db.getAllAsync<{
+      name: string;
+      notnull: number;
+      pk: number;
+    }>('PRAGMA table_info(training_blocks)');
+    expect(columns.map((c) => c.name)).toEqual(TRAINING_BLOCK_COLUMNS);
+    // the nullable ones are the whole point: a program block has no finding,
+    // no bucket and no band, and an active block has no verdict yet.
+    // (pk excluded — SQLite reports notnull=0 for a TEXT PRIMARY KEY even
+    // though the rowid alias still rejects a duplicate id.)
+    const nullable = columns
+      .filter((c) => c.notnull === 0 && c.pk === 0)
+      .map((c) => c.name)
+      .sort();
+    expect(nullable).toEqual([
+      'club_id',
+      'finding_key',
+      'intent',
+      'resolution_note',
+      'resolved_at',
+      'tolerance_json',
+    ]);
+
+    const indexes = await db.getAllAsync<{ name: string }>(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'index' AND tbl_name = 'training_blocks' ORDER BY name`,
+    );
+    expect(indexes.map((i) => i.name)).toEqual(
+      expect.arrayContaining([
+        'idx_training_blocks_finding',
+        'idx_training_blocks_status',
+      ]),
+    );
+    db.close();
+  });
+
+  it('v9 creates training_blocks when upgrading a v8 database', async () => {
+    const db = openTestDatabase();
+    for (const migration of MIGRATIONS.slice(0, 8)) {
+      await migration.up(db);
+    }
+    await db.execAsync('PRAGMA user_version = 8');
+    const before = await db.getAllAsync<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='training_blocks'",
+    );
+    expect(before).toEqual([]);
+
+    await expect(runMigrations(db)).resolves.toBe(9);
+
+    const columns = await db.getAllAsync<{ name: string }>(
+      'PRAGMA table_info(training_blocks)',
+    );
+    expect(columns.map((c) => c.name)).toEqual(TRAINING_BLOCK_COLUMNS);
+
+    // and the upgraded table takes a real row, club_id FK included
+    await db.runAsync(
+      `INSERT INTO clubs (id, name, category, sensor_mode, archived, created_at)
+       VALUES ('c1', 'GW', 'wedge', 'iron', 0, 1)`,
+    );
+    await db.runAsync(
+      `INSERT INTO training_blocks (id, source, finding_key, drill_id,
+         drill_version, club_id, intent, tolerance_json, remeasure_shots,
+         status, started_at, resolved_at, resolution_note, created_at)
+       VALUES ('b1', 'finding', 'c1|stock|thin|carryM', 'ladder', 1, 'c1',
+         'stock', NULL, 20, 'active', 5, NULL, NULL, 5)`,
+    );
+    const row = await db.getFirstAsync<{
+      status: string;
+      tolerance_json: string | null;
+      resolved_at: number | null;
+    }>(
+      "SELECT status, tolerance_json, resolved_at FROM training_blocks WHERE id = 'b1'",
+    );
+    expect(row?.status).toBe('active');
+    expect(row?.tolerance_json).toBeNull();
+    expect(row?.resolved_at).toBeNull();
     db.close();
   });
 });

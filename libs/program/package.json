@@ -1,0 +1,15 @@
+{
+  "name": "@golf/program",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@golf/insights": "workspace:*",
+    "@golf/types": "workspace:*",
+    "zod": "^3.24.4"
+  }
+}
