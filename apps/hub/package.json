@@ -13,6 +13,7 @@
     "@golf/data": "workspace:*",
     "@golf/drill": "workspace:*",
     "@golf/flight-model": "workspace:*",
+    "@golf/insights": "workspace:*",
     "@golf/monitor": "workspace:*",
     "@golf/store": "workspace:*",
     "@golf/types": "workspace:*",

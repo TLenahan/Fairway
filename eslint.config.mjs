@@ -53,7 +53,7 @@ export default [
             { sourceTag: 'lib:insights', onlyDependOnLibsWithTags: ['lib:types'] },
             {
               sourceTag: 'lib:coach',
-              onlyDependOnLibsWithTags: ['lib:types', 'lib:analytics'],
+              onlyDependOnLibsWithTags: ['lib:types', 'lib:analytics', 'lib:insights'],
             },
             { sourceTag: 'lib:data', onlyDependOnLibsWithTags: ['lib:types'] },
             { sourceTag: 'lib:viz', onlyDependOnLibsWithTags: ['lib:types'] },

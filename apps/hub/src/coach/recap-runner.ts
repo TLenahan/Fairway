@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto';
 
 import Anthropic from '@anthropic-ai/sdk';
 import { buildDailySessionExport, parseCoachRecap } from '@golf/coach';
-import { AnalysisVerdict, DataStore, Handedness } from '@golf/types';
+import { buildInsightsWire } from '@golf/insights';
+import {
+  AnalysisVerdict,
+  Club,
+  DataStore,
+  Handedness,
+  ShotRecord,
+} from '@golf/types';
 import { z } from 'zod';
 
 import { ensureCoachResources, runCoachSession } from './coach-agent';
@@ -14,6 +21,23 @@ export interface CoachRunnerConfig {
   data: DataStore;
   dataDir: string;
   handedness: z.infer<typeof Handedness>;
+}
+
+/**
+ * Every shot ever recorded, plus the clubs to resolve them against. The
+ * engine's findings and baselines are cross-session by definition — one
+ * session can never clear the persistence guardrail — so this deliberately
+ * asks for the all-time history (no `sinceSessionId`) rather than the
+ * session the recap is about.
+ */
+export async function loadShotHistory(
+  data: DataStore,
+): Promise<{ shots: ShotRecord[]; clubs: Club[] }> {
+  const clubs = await data.listClubs({ includeArchived: true });
+  const perClub = await Promise.all(
+    clubs.map((club) => data.listShotsByClub(club.id)),
+  );
+  return { shots: perClub.flat(), clubs };
 }
 
 /**
@@ -30,19 +54,21 @@ export async function runDailyCoachRecap(
   const session = await data.getSession(sessionId);
   if (!session) throw new Error(`session ${sessionId} not found`);
 
-  const [shots, swings, clubs] = await Promise.all([
+  const [shots, swings, history] = await Promise.all([
     data.listShots(sessionId),
     data.listWristSwings(sessionId),
-    data.listClubs({ includeArchived: true }),
+    loadShotHistory(data),
   ]);
   if (shots.length === 0) return; // nothing to coach
 
+  // The coach consumes these numbers and never recomputes them (§6.12 rule 2).
   const payload = buildDailySessionExport(
     session,
     shots,
     swings,
-    clubs,
+    history.clubs,
     config.handedness,
+    buildInsightsWire(history.shots, history.clubs),
   );
 
   const resources = await ensureCoachResources(client, config.dataDir);

@@ -28,7 +28,10 @@ const ENVIRONMENT: Environment = {
 };
 
 async function main(): Promise<void> {
-  const dataDir = join(homedir(), '.fairway');
+  // FAIRWAY_DATA_DIR points the whole hub (DB, coach resources, API key) at a
+  // scratch directory — how the UI gets exercised against seeded data without
+  // touching the real practice history.
+  const dataDir = process.env.FAIRWAY_DATA_DIR ?? join(homedir(), '.fairway');
   mkdirSync(dataDir, { recursive: true });
   const db = openNodeDatabase(join(dataDir, 'hub.db'));
 

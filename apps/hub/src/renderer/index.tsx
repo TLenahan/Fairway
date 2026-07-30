@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
+// Type-only: the engine never runs in the browser, so esbuild drops this
+// import entirely. The renderer reads the wire shape the server computes.
+import type {
+  BucketStatusWire,
+  CertificationStatus,
+  FailureMode,
+  FindingWire,
+  InsightMetricKey,
+  InsightsWire,
+} from '@golf/insights';
 import { ShotIntent } from '@golf/types';
 
 import { HubCommand, HubSnapshot, SnapshotMessage } from '../shared/protocol';
@@ -11,6 +21,7 @@ const INTENTS: ShotIntent[] = ['stock', 'draw', 'fade'];
 
 const MS_TO_MPH = 2.23694;
 const M_TO_YD = 1.09361;
+const MAX_FINDINGS = 8;
 
 function useHub(): {
   snapshot: HubSnapshot | null;
@@ -52,6 +63,74 @@ function useHub(): {
   };
 }
 
+/**
+ * Findings are cross-session by construction, so the engine only has something
+ * new to say once a session closes — fetch on mount and on that falling edge
+ * rather than polling. Returns null until the first fetch resolves, which is
+ * what keeps the panel hidden instead of flashing an empty state.
+ */
+function useInsights(snapshot: HubSnapshot | null): InsightsWire | null {
+  const [insights, setInsights] = useState<InsightsWire | null>(null);
+  const fetched = useRef(false);
+  const live = snapshot?.session != null && snapshot.session.endedAt === null;
+
+  useEffect(() => {
+    if (live && fetched.current) return;
+    fetched.current = true;
+    let disposed = false;
+    fetch('/api/insights')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((wire: InsightsWire | null) => {
+        if (!disposed && wire) setInsights(wire);
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, [live]);
+
+  return insights;
+}
+
+/** Engine keys are never shown raw — these maps are the whole UI vocabulary. */
+const METRIC_WORDS: Record<InsightMetricKey, string> = {
+  smash: 'smash factor',
+  ballSpeedMs: 'ball speed',
+  clubSpeedMs: 'club speed',
+  launchDeg: 'launch angle',
+  launchDirDeg: 'launch direction',
+  backspinRpm: 'backspin',
+  sidespinRpm: 'sidespin',
+  carryM: 'carry',
+  offlineM: 'offline',
+  curveM: 'curve',
+  apexM: 'apex height',
+  strikeHMm: 'strike heel-to-toe',
+  strikeVMm: 'strike low-to-high',
+  wristExtTop: 'wrist extension at top',
+  wristExtImpact: 'wrist extension at impact',
+  wristExtPeakDown: 'peak wrist extension in transition',
+};
+
+const FAILURE_WORDS: Record<FailureMode, string> = {
+  pull: 'pulls',
+  push: 'pushes',
+  'over-curve': 'over-curves',
+  'under-curve': 'under-curves',
+  'low-smash': 'low-smash strikes',
+  short: 'short misses',
+  long: 'long misses',
+};
+
+const CERTIFICATION_WORDS: Record<CertificationStatus, string> = {
+  certified: 'certified',
+  'contact-before-shapes': 'contact before shapes',
+  uncertified: 'uncertified',
+};
+
+const certificationClass = (status: CertificationStatus): string =>
+  status === 'certified' ? 'good' : status === 'uncertified' ? 'dim' : 'warn';
+
 function Dot({ state }: { state: string }): React.JSX.Element {
   const color =
     state === 'connected'
@@ -65,8 +144,105 @@ function Dot({ state }: { state: string }): React.JSX.Element {
 const fmt = (value: number | null, scale = 1, digits = 1): string =>
   value === null ? '—' : (value * scale).toFixed(digits);
 
+const pct = (value: number | null): string =>
+  value === null ? '—' : `${Math.round(value * 100)}%`;
+
+/**
+ * Counts, never scores: the engine's own numbers read back as "9 of 12", so a
+ * finding stays falsifiable and nothing here looks like a grade.
+ */
+function FindingLine({ finding }: { finding: FindingWire }): React.JSX.Element {
+  const { counts, sessions_seen: sessions } = finding;
+  return (
+    <li>
+      <span className="who">
+        {finding.club_name} · {finding.intent}
+      </span>{' '}
+      — {FAILURE_WORDS[finding.failure_mode]}: {METRIC_WORDS[finding.metric]} runs{' '}
+      {finding.direction}{' '}
+      <span className="dim">
+        ({counts.bad_beyond_great_range} of {counts.bad} outside your great-shot range,{' '}
+        {sessions} session{sessions === 1 ? '' : 's'})
+      </span>
+    </li>
+  );
+}
+
+function Changepoint({ verdict }: { verdict: BucketStatusWire['changepoint'] }): React.JSX.Element {
+  if (verdict === 'new-swing') {
+    return <span className="warn">new swing — re-baseline</span>;
+  }
+  if (verdict === 'bad-day') return <span className="dim">rough session</span>;
+  return <span className="dim">—</span>;
+}
+
+function Insights({ wire }: { wire: InsightsWire }): React.JSX.Element {
+  // Most-supported first — the count of bad shots outside the great range is
+  // the evidence, so it is also the ranking.
+  const ranked = [...wire.findings].sort(
+    (a, b) => b.counts.bad_beyond_great_range - a.counts.bad_beyond_great_range,
+  );
+  const shown = ranked.slice(0, MAX_FINDINGS);
+  const hidden = ranked.length - shown.length;
+
+  return (
+    <div className="panel">
+      <h2>Insights</h2>
+      {wire.findings.length === 0 && wire.buckets.length === 0 && (
+        <span className="dim">No trends yet — the engine needs a few sessions per club.</span>
+      )}
+
+      {shown.length > 0 && (
+        <ul className="findings">
+          {shown.map((finding) => (
+            <FindingLine
+              key={`${finding.club_id}:${finding.intent}:${finding.failure_mode}:${finding.metric}`}
+              finding={finding}
+            />
+          ))}
+          {hidden > 0 && <li className="dim">+{hidden} more</li>}
+        </ul>
+      )}
+
+      {wire.buckets.length > 0 && (
+        <table style={{ marginTop: shown.length > 0 ? 12 : 0 }}>
+          <thead>
+            <tr>
+              <th>Club</th>
+              <th>Intent</th>
+              <th>Shots</th>
+              <th>Great</th>
+              <th>Certification</th>
+              <th>Dispersion</th>
+              <th>Trend</th>
+            </tr>
+          </thead>
+          <tbody>
+            {wire.buckets.map((bucket) => (
+              <tr key={`${bucket.club_id}:${bucket.intent}`}>
+                <td>{bucket.club_name}</td>
+                <td>{bucket.intent}</td>
+                <td>{bucket.n_total}</td>
+                <td>{pct(bucket.great_rate)}</td>
+                <td className={certificationClass(bucket.certification)}>
+                  {CERTIFICATION_WORDS[bucket.certification]}
+                </td>
+                <td>{fmt(bucket.dispersion_index, 1, 2)}</td>
+                <td>
+                  <Changepoint verdict={bucket.changepoint} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function App(): React.JSX.Element {
   const { snapshot, connected, send } = useHub();
+  const insights = useInsights(snapshot);
   if (!snapshot) {
     return <div className="panel dim">Connecting to hub…</div>;
   }
@@ -194,6 +370,8 @@ function App(): React.JSX.Element {
           </table>
         )}
       </div>
+
+      {insights && <Insights wire={insights} />}
     </>
   );
 }

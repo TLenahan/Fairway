@@ -1,6 +1,6 @@
 import { ShotIntent } from '@golf/types';
 
-import { InsightShot } from './types';
+import { FailureMode, InsightMetricKey, InsightShot } from './types';
 
 /**
  * Every threshold in the engine lives here, not in code (BUILD_SPEC §6 /
@@ -45,6 +45,14 @@ export interface InsightsConfig {
     minGreatBucket: number;
     /** normal-approximation rank-sum p must be under this */
     maxPApprox: number;
+    /**
+     * Metrics that DEFINE each failure mode, and are therefore never mined
+     * against it. "Your low-smash shots have low smash" is a tautology, not
+     * a finding — it always clears every guardrail (the effect is the
+     * definition) and crowds out the real signal. Excluding a metric here
+     * only suppresses it for that mode; it stays minable everywhere else.
+     */
+    tautologicalMetrics: Record<FailureMode, InsightMetricKey[]>;
   };
   ewma: { halfLifeSessions: number };
   changepoint: {
@@ -113,6 +121,16 @@ export const DEFAULT_INSIGHTS_CONFIG: InsightsConfig = {
     minBadBucket: 8,
     minGreatBucket: 8,
     maxPApprox: 0.05,
+    tautologicalMetrics: {
+      // ball speed is smash × club speed, so it restates a smash miss
+      'low-smash': ['smash', 'ballSpeedMs'],
+      pull: ['launchDirDeg'],
+      push: ['launchDirDeg'],
+      'over-curve': ['curveM', 'sidespinRpm'],
+      'under-curve': ['curveM', 'sidespinRpm'],
+      short: ['carryM'],
+      long: ['carryM'],
+    },
   },
   ewma: { halfLifeSessions: 5 },
   changepoint: {

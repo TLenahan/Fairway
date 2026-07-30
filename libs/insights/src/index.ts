@@ -12,3 +12,4 @@ export * from './carry-decomposition';
 export * from './dispersion-index';
 export * from './engine';
 export * from './synthetic';
+export * from './wire';

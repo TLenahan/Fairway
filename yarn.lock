@@ -2561,6 +2561,7 @@ __metadata:
   resolution: "@golf/coach@workspace:libs/coach"
   dependencies:
     "@golf/analytics": "workspace:*"
+    "@golf/insights": "workspace:*"
     "@golf/types": "workspace:*"
     zod: "npm:^3.24.4"
   languageName: unknown
@@ -2654,6 +2655,7 @@ __metadata:
     "@golf/data": "workspace:*"
     "@golf/drill": "workspace:*"
     "@golf/flight-model": "workspace:*"
+    "@golf/insights": "workspace:*"
     "@golf/monitor": "workspace:*"
     "@golf/store": "workspace:*"
     "@golf/types": "workspace:*"
@@ -2669,7 +2671,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@golf/insights@workspace:libs/insights":
+"@golf/insights@workspace:*, @golf/insights@workspace:libs/insights":
   version: 0.0.0-use.local
   resolution: "@golf/insights@workspace:libs/insights"
   dependencies:

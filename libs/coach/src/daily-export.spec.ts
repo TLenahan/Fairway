@@ -1,3 +1,4 @@
+import { InsightsWire } from '@golf/insights';
 import {
   Club,
   FlightResult,
@@ -127,6 +128,40 @@ const swing = (tImpactMs: number): WristSwingRecord => ({
   createdAt: tImpactMs,
 });
 
+const insights: InsightsWire = {
+  findings: [
+    {
+      club_id: 'club-1',
+      club_name: '7 Iron',
+      intent: 'stock',
+      failure_mode: 'pull',
+      metric: 'launchDirDeg',
+      effect_size: 1.4,
+      direction: 'lower',
+      sessions_seen: 3,
+      counts: { bad: 14, great: 9, bad_beyond_great_range: 11 },
+    },
+  ],
+  buckets: [
+    {
+      club_id: 'club-1',
+      club_name: '7 Iron',
+      intent: 'stock',
+      n_total: 40,
+      n_great: 9,
+      great_rate: 0.225,
+      certification: 'certified',
+      dispersion_index: 1.12,
+      carry_sigma_m: 4.3,
+      offline_sigma_m: 6.1,
+      changepoint: 'bad-day',
+      bias: [{ metric: 'launchDirDeg', mean_offset: -1.8 }],
+      variance_drivers: ['smash'],
+      carry_variance_dominant: 'smash',
+    },
+  ],
+};
+
 describe('buildDailySessionExport', () => {
   it('assembles shots in capture order with intent, warmup, and rounding', () => {
     const shots = [
@@ -135,7 +170,7 @@ describe('buildDailySessionExport', () => {
     ];
     const out = buildDailySessionExport(session, shots, [], [club(shots[0].clubId, '7 Iron')], 'right');
 
-    expect(out.contract).toBe(3);
+    expect(out.contract).toBe(4);
     expect(out.shots.map((s) => s.t_ms)).toEqual([100, 500]);
     expect(out.shots[0].warmup).toBe(true);
     expect(out.shots[0].intent).toBe('stock');
@@ -171,6 +206,28 @@ describe('buildDailySessionExport', () => {
     expect(out.wrist_coverage.paired).toBe(1);
     expect(out.shots[0].wrist?.ext_top).toBe(28);
     expect(out.wrist_strap_drift).toBe(false);
+  });
+
+  it('omits the insights block entirely when none is supplied', () => {
+    const out = buildDailySessionExport(session, [buildShot()], [], [], 'right');
+
+    expect(out).not.toHaveProperty('insights');
+    expect(out.insights).toBeUndefined();
+  });
+
+  it('passes the engine insights through verbatim', () => {
+    const out = buildDailySessionExport(
+      session,
+      [buildShot()],
+      [],
+      [],
+      'right',
+      insights,
+    );
+
+    expect(out.insights).toEqual(insights);
+    expect(out.insights?.findings[0].counts.bad_beyond_great_range).toBe(11);
+    expect(out.insights?.buckets[0].certification).toBe('certified');
   });
 });
 

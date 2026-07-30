@@ -2,9 +2,11 @@ import { readFile } from 'node:fs/promises';
 import { createServer, Server } from 'node:http';
 import { join } from 'node:path';
 
+import { buildInsightsWire } from '@golf/insights';
 import { Environment, WristDevice } from '@golf/types';
 import { WebSocket, WebSocketServer } from 'ws';
 
+import { loadShotHistory } from './coach/recap-runner';
 import { HubServices } from './services';
 import { HubCommand, SnapshotMessage } from './shared/protocol';
 import { buildSnapshot } from './snapshot';
@@ -29,6 +31,8 @@ const CONTENT_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
 };
 
+const INSIGHTS_PATH = '/api/insights';
+
 export async function startHubServer(
   config: HubServerConfig,
 ): Promise<{ server: Server; close(): Promise<void> }> {
@@ -46,6 +50,25 @@ export async function startHubServer(
   const httpServer = createServer((req, res) => {
     void (async () => {
       const path = req.url === '/' || req.url === undefined ? '/index.html' : req.url;
+
+      // Findings and baselines are windowed over the whole shot history, so
+      // insights are pulled on demand rather than riding the per-shot snapshot
+      // push — recomputing the engine on every shot would be wasted work.
+      if (path === INSIGHTS_PATH) {
+        try {
+          const { shots, clubs } = await loadShotHistory(services.data);
+          res
+            .writeHead(200, { 'content-type': 'application/json' })
+            .end(JSON.stringify(buildInsightsWire(shots, clubs)));
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          res
+            .writeHead(500, { 'content-type': 'application/json' })
+            .end(JSON.stringify({ error }));
+        }
+        return;
+      }
+
       const ext = path.slice(path.lastIndexOf('.'));
       const type = CONTENT_TYPES[ext];
       if (!type || path.includes('..')) {

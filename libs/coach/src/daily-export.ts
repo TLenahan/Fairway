@@ -1,4 +1,5 @@
 import { buildWristSessionExport, WristSessionExport } from '@golf/analytics';
+import { InsightsWire } from '@golf/insights';
 import {
   Club,
   Handedness,
@@ -12,7 +13,7 @@ import {
 import { z } from 'zod';
 
 /**
- * Daily session-JSON export, contract v3 — the payload the Reform Coach
+ * Daily session-JSON export, contract v4 — the payload the Reform Coach
  * agent consumes. Extends the wrist portion (libs/analytics/wrist-export,
  * the tools/wrist-coach-export.ts CLI shape) with the launch/flight portion:
  * per-shot measured + flight-model numbers, intent/warmup tags, and the
@@ -21,11 +22,17 @@ import { z } from 'zod';
  * omission-over-garbage — a null measurement is omitted, never zero-filled.
  * Derived numeric metrics only; raw sensor streams and video never ride
  * this payload (BUILD_SPEC §8.3).
+ *
+ * v4 adds the optional `insights` block: the @golf/insights engine's
+ * cross-session findings and per-bucket status. It is passed in rather than
+ * computed here — this session's shots are not enough to produce it, and the
+ * caller (the hub) owns the shot history it needs. Per BUILD_SPEC §6.12
+ * rule 2 the coach narrates those numbers and never recomputes them.
  */
 
 type Handed = z.infer<typeof Handedness>;
 
-export const EXPORT_CONTRACT_VERSION = 3;
+export const EXPORT_CONTRACT_VERSION = 4;
 
 export interface ExportShotRow {
   shot_guid: string;
@@ -68,6 +75,8 @@ export interface DailySessionExport {
   shots: ExportShotRow[];
   wrist_coverage: WristCoachCoverage;
   wrist_strap_drift: boolean;
+  /** cross-session engine output; absent when the caller had no history */
+  insights?: InsightsWire;
 }
 
 const round = (value: number, digits: number): number => {
@@ -89,6 +98,7 @@ export function buildDailySessionExport(
   wristSwings: WristSwingRecord[],
   clubs: Club[],
   handedness: Handed,
+  insights?: InsightsWire,
 ): DailySessionExport {
   const ordered = [...shots].sort((a, b) => a.capturedAt - b.capturedAt);
   const wrist: WristSessionExport = buildWristSessionExport(
@@ -148,5 +158,6 @@ export function buildDailySessionExport(
     shots: shotRows,
     wrist_coverage: wrist.coverage,
     wrist_strap_drift: wrist.strapDrift,
+    ...(insights !== undefined ? { insights } : {}),
   };
 }

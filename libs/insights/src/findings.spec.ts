@@ -267,3 +267,42 @@ describe('detectFindings', () => {
     expect(detectFindings(shuffled, config)).toEqual(baseline);
   });
 });
+
+describe('tautological metric exclusion', () => {
+  /** Low-smash shots trivially have low smash and low ball speed; a finding
+      on either restates the label instead of explaining it. */
+  it('never reports the metric that defines the failure mode', () => {
+    const shots: InsightShot[] = [];
+    // Deterministic jitter: Cohen's d needs within-group variance, so
+    // constant values would make every effect size zero.
+    const jitter = (i: number, scale: number): number =>
+      (((i * 37) % 11) - 5) * scale;
+    for (let i = 0; i < 40; i += 1) {
+      const bad = i % 4 === 0; // 10 bad, spread evenly over the 4 sessions
+      shots.push(
+        buildShot({
+          sessionId: `session-${Math.floor(i / 10)}`,
+          smash: (bad ? 1.05 : 1.3) + jitter(i, 0.004),
+          ballSpeedMs: (bad ? 24 : 32) + jitter(i, 0.1),
+          // an informative, non-defining difference that SHOULD survive
+          clubSpeedMs: (bad ? 29 : 25) + jitter(i, 0.1),
+        }),
+      );
+    }
+
+    const found = detectFindings(shots, config);
+    const lowSmash = found.filter((f) => f.failureMode === 'low-smash');
+
+    expect(lowSmash.length).toBeGreaterThan(0);
+    expect(lowSmash.map((f) => f.metric)).not.toContain('smash');
+    expect(lowSmash.map((f) => f.metric)).not.toContain('ballSpeedMs');
+    expect(lowSmash.map((f) => f.metric)).toContain('clubSpeedMs');
+  });
+
+  it('still mines an excluded metric under a different failure mode', () => {
+    expect(config.findings.tautologicalMetrics.pull).toContain('launchDirDeg');
+    expect(config.findings.tautologicalMetrics['low-smash']).not.toContain(
+      'launchDirDeg',
+    );
+  });
+});
