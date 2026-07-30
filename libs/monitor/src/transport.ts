@@ -1,8 +1,8 @@
 /**
  * Narrow transport seams so every protocol component is pure and
  * Node-testable. The react-native-tcp-socket / react-native-udp
- * implementations live in rn-transport.ts and are the ONLY files that touch
- * native modules.
+ * implementation lives at the app edge (apps/fairway's
+ * rn-monitor-transport.ts) and is the only file that touches native modules.
  */
 export interface TcpConnection {
   write(data: Uint8Array): void;

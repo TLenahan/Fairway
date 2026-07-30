@@ -1,20 +1,21 @@
-import TcpSocket from 'react-native-tcp-socket';
-import dgram from 'react-native-udp';
-
-import { EyeMiniMonitor, MonitorConfig } from './monitor-service';
 import {
   ConnectTimeoutError,
+  EyeMiniMonitor,
+  MonitorConfig,
   TcpConnection,
   TcpConnectOptions,
   TcpFactory,
   UdpFactory,
   UdpSocket,
-} from './transport';
+} from '@golf/monitor';
+import TcpSocket from 'react-native-tcp-socket';
+import dgram from 'react-native-udp';
 
 /**
- * The ONLY file that touches native modules (react-native-tcp-socket /
- * react-native-udp) — everything else in the lib stays Node-pure. Requires a
- * custom dev client; never runs in Expo Go.
+ * react-native-tcp-socket / react-native-udp implementation of the
+ * @golf/monitor transport seam — the ONLY file that touches those native
+ * modules, the same edge pattern as wrist's rn-ble-wrist-transport. Requires
+ * a custom dev client; never runs in Expo Go.
  */
 
 const rnTcpFactory: TcpFactory = {

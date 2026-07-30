@@ -15,7 +15,7 @@ import { BleManager, Device, State } from 'react-native-ble-plx';
 /**
  * react-native-ble-plx implementation of the @golf/wrist BLE seam — the ONLY
  * file that touches the native BLE module (libs/wrist/MIGRATION.md §2), the
- * same edge pattern as monitor's rn-transport.
+ * same edge pattern as monitor's rn-monitor-transport.
  */
 const toB64 = (data: Uint8Array): string =>
   Buffer.from(data).toString('base64');

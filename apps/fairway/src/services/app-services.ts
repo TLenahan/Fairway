@@ -7,7 +7,6 @@ import {
   SqlDatabase,
 } from '@golf/data';
 import { flightModel } from '@golf/flight-model';
-import { createNativeMonitorService } from '@golf/monitor';
 import { createFairwayStore } from '@golf/store';
 import { fetch as expoFetch } from 'expo/fetch';
 import * as SQLite from 'expo-sqlite';
@@ -19,6 +18,7 @@ import {
 import { getApiKey } from './api-key';
 import { AppServices } from './context';
 import { createNativeWristService } from './rn-ble-wrist-transport';
+import { createNativeMonitorService } from './rn-monitor-transport';
 import { createSettingsStore, loadSettings } from './settings';
 import { createWristCaptureRecorder } from './wrist-capture';
 
