@@ -22,6 +22,8 @@
       "@golf/wrist": ["./libs/wrist/src/index.ts"],
       "@golf/drill": ["./libs/drill/src/index.ts"],
       "@golf/data": ["./libs/data/src/index.ts"],
+      "@golf/data/node": ["./libs/data/src/node.ts"],
+      "@golf/monitor/testing": ["./libs/monitor/src/testing/index.ts"],
       "@golf/flight-model": ["./libs/flight-model/src/index.ts"],
       "@golf/analytics": ["./libs/analytics/src/index.ts"],
       "@golf/analysis": ["./libs/analysis/src/index.ts"],
