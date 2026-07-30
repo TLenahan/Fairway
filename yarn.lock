@@ -2353,6 +2353,7 @@ __metadata:
   resolution: "@golf/analytics@workspace:libs/analytics"
   dependencies:
     "@golf/types": "workspace:*"
+    zod: "npm:^3.24.4"
   languageName: unknown
   linkType: soft
 

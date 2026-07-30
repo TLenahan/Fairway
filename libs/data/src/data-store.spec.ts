@@ -475,4 +475,37 @@ describe('createDataStore', () => {
       third,
     ]);
   });
+
+  it('round-trips wrist swings ordered by impact time, coach result intact', async () => {
+    const { store } = await build();
+    const session = await store.createSession({
+      name: null,
+      notes: null,
+      startedAt: 1,
+      environment: env,
+    });
+
+    const later = await store.insertWristSwing({
+      sessionId: session.id,
+      tImpactMs: 20_000,
+      coach: { status: 'dropped', reason: 'no_setup' },
+    });
+    const earlier = await store.insertWristSwing({
+      sessionId: session.id,
+      tImpactMs: 10_000,
+      coach: {
+        status: 'ok',
+        keyframes: {
+          setup: { extensionDeg: 24.04, deviationDeg: -2.51, rotationDeg: -1.02 },
+          top: { extensionDeg: 35.52, deviationDeg: -16.03, rotationDeg: -34.05 },
+          impact: { extensionDeg: 2.01, deviationDeg: 19.48, rotationDeg: 12.53 },
+          peakDownExtensionDeg: 38.11,
+        },
+      },
+    });
+
+    const listed = await store.listWristSwings(session.id);
+    expect(listed).toEqual([earlier, later]);
+    expect(await store.listWristSwings('nope')).toEqual([]);
+  });
 });

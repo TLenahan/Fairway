@@ -151,6 +151,95 @@ export const WristPhaseEventSchema = z.object({
 });
 export type WristPhaseEvent = z.infer<typeof WristPhaseEventSchema>;
 
+/* ───────────────────── coach export (Reform Coach agent) ─────────────────────
+   The wrist portion of the daily session-JSON export. The consumer computes
+   only from fields that are present — a missing field is safe, a wrong field
+   is poison — so extraction NEVER clamps or null-fills: a swing whose
+   keyframes can't be trusted drops its entire block and is counted in the
+   session coverage instead. Absolute calibrated angles at keyframes only; the
+   agent derives deltas itself. */
+
+/** Why a swing exported no keyframes. `no_setup`: no qualifying ≥500 ms
+    low-variance address pause was found, so the swing's own segmentation is
+    untrusted. `glitch`: the samples themselves can't be trusted (angle out of
+    physical bounds, stream inconsistency). `uncalibrated`: no anatomical
+    calibration was applied when the swing fired. */
+export const WristCoachDropReason = z.enum([
+  'no_setup',
+  'glitch',
+  'uncalibrated',
+]);
+
+/** Calibrated absolute anatomical angles at one keyframe (degrees, full
+    precision — wire rounding happens at export serialization). Deviation and
+    rotation SIGNS are handedness-dependent (radial-positive / supination-
+    positive on the wire) and resolved at export time (@golf/analytics). */
+export const WristCoachAnglesSchema = z.object({
+  extensionDeg: z.number(), // + = extension (cupping), − = flexion
+  deviationDeg: z.number(), // anatomical deviation (about the vertical axis)
+  rotationDeg: z.number(), // pronation/supination (about the forearm axis)
+});
+export type WristCoachAngles = z.infer<typeof WristCoachAnglesSchema>;
+
+/** The four coach keyframes. `setup` is the per-angle MEDIAN over the address
+    pause window, never a single sample; the others are single samples at
+    segmentation landmarks (see @golf/wrist coach-keyframes). */
+export const WristCoachKeyframesSchema = z.object({
+  setup: WristCoachAnglesSchema,
+  top: WristCoachAnglesSchema,
+  impact: WristCoachAnglesSchema,
+  /** max extension between top and impact (the cast/flip signature) */
+  peakDownExtensionDeg: z.number(),
+});
+export type WristCoachKeyframes = z.infer<typeof WristCoachKeyframesSchema>;
+
+export const WristCoachResultSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ok'), keyframes: WristCoachKeyframesSchema }),
+  z.object({ status: z.literal('dropped'), reason: WristCoachDropReason }),
+]);
+export type WristCoachResult = z.infer<typeof WristCoachResultSchema>;
+
+/** Per-shot wrist block, EXACT wire shape for the session-JSON export:
+    snake_case keys, degrees rounded to 0.1, extension positive / flexion
+    negative, radial positive / ulnar negative, rotation positive =
+    supination (the face-closing direction for the lead wrist). Absent fields
+    are OMITTED, never null-filled. */
+export interface WristCoachBlock {
+  ext_setup: number;
+  ext_top: number;
+  ext_impact: number;
+  ext_peak_down: number;
+  rad_setup?: number;
+  rad_top?: number;
+  rad_impact?: number;
+  rot_setup?: number;
+  rot_top?: number;
+  rot_impact?: number;
+}
+
+/** Session-level wrist coverage, wire shape. Counters are mutually exclusive
+    and sum to the session's validated wrist swings: `paired` counts swings
+    that matched a launch-monitor shot one-to-one AND exported a block. */
+export interface WristCoachCoverage {
+  paired: number;
+  dropped_unpaired: number;
+  dropped_glitch: number;
+  dropped_no_setup: number;
+  dropped_uncalibrated: number;
+}
+
+/** One persisted wrist swing — EVERY validated swing during a session,
+    practice swings included, so the export can count unpaired swings honestly
+    (the live wrist↔shot join buffer silently ages them out). */
+export const WristSwingRecordSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  tImpactMs: z.number(), // arrival epoch ms at the impact zone — pairing key
+  coach: WristCoachResultSchema,
+  createdAt: z.number(),
+});
+export type WristSwingRecord = z.infer<typeof WristSwingRecordSchema>;
+
 /**
  * The swing event — the PRIMARY shot detection for this data source. A swing
  * is a validated backswing→top→downswing envelope; no address hold is
@@ -179,6 +268,9 @@ export const WristShotSchema = z.object({
     offsetFromImpactMs: z.number(), // + = shock after the impact zone
     peakAbsLsb: z.number(), // max |imu| over the swing, raw lsb
   }),
+  /** Coach-export keyframes, attached by the wrist service's keyframe
+      extractor. Absent on paths without one (batch detectSwings, old rows). */
+  coach: WristCoachResultSchema.optional(),
 });
 export type WristShot = z.infer<typeof WristShotSchema>;
 

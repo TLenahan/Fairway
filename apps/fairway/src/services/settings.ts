@@ -83,6 +83,7 @@ const settingsOf = (state: SettingsState): Settings =>
     savedDeviceIp: state.savedDeviceIp,
     tileOrder: state.tileOrder,
     drillWedgeIds: state.drillWedgeIds,
+    wristCalibration: state.wristCalibration,
   });
 
 export async function loadSettings(): Promise<Settings> {

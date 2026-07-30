@@ -9,6 +9,8 @@ import {
   SessionSchema,
   ShotRecord,
   ShotRecordSchema,
+  WristSwingRecord,
+  WristSwingRecordSchema,
 } from '@golf/types';
 
 /**
@@ -255,6 +257,24 @@ export function mapDrillRepRow(row: DrillRepRow): DrillRep {
     targetAngleDeg: row.target_angle_deg,
     outcome: row.outcome,
     carryM: row.carry_m,
+    createdAt: row.created_at,
+  });
+}
+
+export interface WristSwingRow {
+  id: string;
+  session_id: string;
+  t_impact_ms: number;
+  coach_json: string;
+  created_at: number;
+}
+
+export function mapWristSwingRow(row: WristSwingRow): WristSwingRecord {
+  return WristSwingRecordSchema.parse({
+    id: row.id,
+    sessionId: row.session_id,
+    tImpactMs: row.t_impact_ms,
+    coach: JSON.parse(row.coach_json) as unknown,
     createdAt: row.created_at,
   });
 }

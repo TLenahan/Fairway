@@ -218,6 +218,13 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
   // Wrist↔shot correlation buffers (only used when a wrist service is wired).
   const pendingSwings: { swing: WristShot; at: number }[] = [];
   const pendingShots: { record: ShotRecord; at: number }[] = [];
+  // Swings that fired before any session existed. The session's FIRST swing
+  // routinely lands here (the wrist event beats the MINI record that lazily
+  // creates the quick session) — if it went unlogged, the coach export would
+  // lose a real swing from wrist_coverage AND lose the ambiguity that guards
+  // its one-to-one pairing. Flushed into wrist_swings by the shot handler
+  // right after ensureSession; pruned on the same horizon as the join.
+  const preSessionSwings: { swing: WristShot; at: number }[] = [];
 
   // Drill-mode closure state. drillReps mirrors the persisted rows for the
   // drill's wedges (SQLite stays the source of truth); repBySwing lets the
@@ -285,6 +292,14 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
       return;
     }
     const session = await ensureSession();
+    // flush swings that beat the session into existence — the first ball's
+    // own swing routinely does — dropping any beyond the join horizon
+    const flushAt = Date.now();
+    for (const held of preSessionSwings.splice(0)) {
+      if (flushAt - held.at <= PRUNE_MS) {
+        await logWristSwing(session.id, held.swing);
+      }
+    }
     const club = await ensureClub();
     // Flight simulation is meaningless for putts (no ballistic flight).
     const flight =
@@ -367,7 +382,37 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     });
   }
 
+  /** Log a validated swing for the coach export's coverage. Isolated
+      failure: a DB hiccup here must not cost the drill rep or the join. */
+  async function logWristSwing(sessionId: string, swing: WristShot): Promise<void> {
+    await data
+      .insertWristSwing({
+        sessionId,
+        tImpactMs: swing.tImpactMs,
+        // the live wrist service always attaches a coach result; a missing
+        // one means extraction never ran — integrity unknown, glitch
+        coach: swing.coach ?? { status: 'dropped', reason: 'glitch' },
+      })
+      .catch((err: Error) => onError(err));
+  }
+
   async function handleSwing(swing: WristShot): Promise<void> {
+    // Log EVERY validated swing — including practice swings the join below
+    // will never match (they'd otherwise age out of the buffer without a
+    // trace). With no session yet, hold the swing for the shot handler to
+    // flush once its ensureSession runs.
+    const session = get().session;
+    if (session) {
+      await logWristSwing(session.id, swing);
+    } else {
+      while (
+        preSessionSwings.length &&
+        swing.tImpactMs - preSessionSwings[0].at > PRUNE_MS
+      ) {
+        preSessionSwings.shift();
+      }
+      preSessionSwings.push({ swing, at: swing.tImpactMs });
+    }
     const drill = get().drill;
     if (drill?.active) {
       await recordDrillRep(drill, drill.active, swing);

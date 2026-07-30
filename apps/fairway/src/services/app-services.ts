@@ -85,10 +85,14 @@ export async function createAppServices(
     let lastClubId: string | null = null;
     const emitContext = (): void => {
       const club = store.getState().activeClub;
+      const calibration = settings.getState().wristCalibration;
       wristCapture.event({
         type: 'context',
         t: Date.now(),
-        calibrated: settings.getState().wristCalibration !== null,
+        calibrated: calibration !== null,
+        // the full qRef/frame rides along so a replay can reproduce the
+        // session's anatomical angles (calibrated:true alone can't)
+        calibration,
         club: club
           ? {
               id: club.id,
@@ -99,6 +103,14 @@ export async function createAppServices(
           : null,
       });
     };
+    // a mid-capture recalibration must land in the capture, or a replay
+    // would compute every later swing under the stale frame
+    let lastCalibration = settings.getState().wristCalibration;
+    settings.subscribe((s) => {
+      if (s.wristCalibration === lastCalibration) return;
+      lastCalibration = s.wristCalibration;
+      if (wristCapture.status().recording) emitContext();
+    });
     store.subscribe((state) => {
       const recording = wristCapture.status().recording;
       if (recording && !wasRecording) {

@@ -13,6 +13,7 @@ import {
   WristService,
   WristServiceEvents,
   WristShot,
+  WristSwingRecord,
 } from '@golf/types';
 
 import { createFairwayStore } from './create-store';
@@ -107,6 +108,7 @@ class FakeData implements DataStore {
   sessions: Session[] = [];
   shots: ShotRecord[] = [];
   drillReps: DrillRep[] = [];
+  wristSwings: WristSwingRecord[] = [];
   private nextId = 1;
   private nextCreatedAt = 1;
 
@@ -192,6 +194,22 @@ class FakeData implements DataStore {
   }
   async listShotsByClub(): Promise<ShotRecord[]> {
     return this.shots;
+  }
+  async insertWristSwing(
+    input: Omit<WristSwingRecord, 'id' | 'createdAt'>,
+  ): Promise<WristSwingRecord> {
+    const created: WristSwingRecord = {
+      ...input,
+      id: `wswing-${this.nextId++}`,
+      createdAt: this.nextCreatedAt++,
+    };
+    this.wristSwings.push(created);
+    return created;
+  }
+  async listWristSwings(sessionId: string): Promise<WristSwingRecord[]> {
+    return this.wristSwings
+      .filter((s) => s.sessionId === sessionId)
+      .sort((a, b) => a.tImpactMs - b.tImpactMs);
   }
   async saveAnalysis(): Promise<void> {}
   async listAnalyses(): Promise<AnalysisRecord[]> {
@@ -509,6 +527,45 @@ describe('createFairwayStore', () => {
     await flush();
     expect(errors).toHaveLength(0);
     expect(store.getState().sessionShots[0].wrist).toBeUndefined();
+  });
+
+  it('logs every swing for the coach export — the pre-session first swing included', async () => {
+    const wrist = new FakeWrist();
+    const { monitor, data, store, errors } = build({ wrist });
+    await withActiveIron(store);
+
+    // the first ball's swing fires BEFORE the MINI record lazily creates the
+    // quick session — held, then flushed once the shot's ensureSession runs.
+    // A stale pre-session swing beyond the join horizon is dropped instead.
+    wrist.emit('swing', swingAt(Date.now() - 60_000));
+    await flush();
+    const firstSwing = swingAt(Date.now());
+    firstSwing.coach = { status: 'dropped', reason: 'uncalibrated' };
+    wrist.emit('swing', firstSwing);
+    await flush();
+    expect(data.wristSwings).toHaveLength(0);
+
+    monitor.emit('shot', measuredFixture('g-1'));
+    await flush();
+    const sessionId = store.getState().session?.id;
+    expect(data.wristSwings).toHaveLength(1);
+    expect(data.wristSwings[0].sessionId).toBe(sessionId);
+    expect(data.wristSwings[0].tImpactMs).toBe(firstSwing.tImpactMs);
+    expect(data.wristSwings[0].coach).toEqual({
+      status: 'dropped',
+      reason: 'uncalibrated',
+    });
+
+    // a practice swing the join will never match is still logged; without a
+    // coach result (batch path) it is logged as a glitch
+    wrist.emit('swing', swingAt(Date.now() - 50_000));
+    await flush();
+    expect(errors).toHaveLength(0);
+    expect(data.wristSwings).toHaveLength(2);
+    expect(data.wristSwings[1].coach).toEqual({
+      status: 'dropped',
+      reason: 'glitch',
+    });
   });
 });
 
