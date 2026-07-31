@@ -56,6 +56,15 @@ export default [
               onlyDependOnLibsWithTags: ['lib:types', 'lib:insights'],
             },
             {
+              sourceTag: 'lib:mcp',
+              onlyDependOnLibsWithTags: [
+                'lib:types',
+                'lib:data',
+                'lib:insights',
+                'lib:program',
+              ],
+            },
+            {
               sourceTag: 'lib:coach',
               onlyDependOnLibsWithTags: [
                 'lib:types',

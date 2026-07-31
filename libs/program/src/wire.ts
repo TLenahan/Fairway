@@ -1,6 +1,8 @@
 import { ShotIntent, TrainingBlock, TrainingBlockStatus } from '@golf/types';
 
 import { Drill } from './drill-content';
+import { drillById } from './library';
+import { parseFindingKey } from './session-plan';
 
 /**
  * Serializable view of a training block — what the coach payload and the hub
@@ -28,6 +30,24 @@ export interface TrainingBlockWire {
   started_at_ms: number;
   resolved_at_ms: number | null;
   resolution_note: string | null;
+}
+
+/**
+ * `toBlockWire` with the library and the finding key resolved for you — what
+ * every consumer that just wants "this block, serialized" should call.
+ *
+ * A block's `findingKey` is persisted text that outlives the code that wrote
+ * it, so an unparseable one degrades to "no failure mode named" rather than
+ * taking a whole payload down; likewise a `drillId` the library no longer
+ * carries falls back to the id itself. A serializer that threw on either
+ * would make one stale row hide every other block in the store.
+ */
+export function resolveBlockWire(block: TrainingBlock): TrainingBlockWire {
+  return toBlockWire(
+    block,
+    drillById(block.drillId),
+    block.findingKey === null ? null : parseFindingKey(block.findingKey),
+  );
 }
 
 export function toBlockWire(

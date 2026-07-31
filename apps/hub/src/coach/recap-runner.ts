@@ -2,13 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import Anthropic from '@anthropic-ai/sdk';
 import { buildDailySessionExport, parseCoachRecap } from '@golf/coach';
-import {
-  AnalysisVerdict,
-  Club,
-  DataStore,
-  Handedness,
-  ShotRecord,
-} from '@golf/types';
+import { AnalysisVerdict, DataStore, Handedness } from '@golf/types';
 import { z } from 'zod';
 
 import { runProgramLoop } from '../program-runner';
@@ -21,23 +15,6 @@ export interface CoachRunnerConfig {
   data: DataStore;
   dataDir: string;
   handedness: z.infer<typeof Handedness>;
-}
-
-/**
- * Every shot ever recorded, plus the clubs to resolve them against. The
- * engine's findings and baselines are cross-session by definition — one
- * session can never clear the persistence guardrail — so this deliberately
- * asks for the all-time history (no `sinceSessionId`) rather than the
- * session the recap is about.
- */
-export async function loadShotHistory(
-  data: DataStore,
-): Promise<{ shots: ShotRecord[]; clubs: Club[] }> {
-  const clubs = await data.listClubs({ includeArchived: true });
-  const perClub = await Promise.all(
-    clubs.map((club) => data.listShotsByClub(club.id)),
-  );
-  return { shots: perClub.flat(), clubs };
 }
 
 /**

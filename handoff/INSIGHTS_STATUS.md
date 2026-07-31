@@ -11,11 +11,11 @@ feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 | Phase | Status |
 |---|---|
 | 0 — Audit + core extraction | **Done.** The `@golf/*` lib layer already was the extraction; audit + reuse matrix in INSIGHTS_AUDIT.md |
-| 1 — Mac hub MVP | **Code-complete.** Awaiting first live-hardware run + historical import (needs the phone's `fairway.db`) |
+| 1 — Mac hub MVP | **Code-complete.** Awaiting the first live-hardware run |
 | 2 — Capture clients + clips | Not started. **No batch mode (Tim).** Ring-buffer spike is the mandatory first task; GoPro HERO 12 may join per GOPRO_CAPTURE.md bench |
 | 3 — Pose pipeline | Not started (Python/uv worker, MediaPipe) |
 | 4 — Analytics engine | **Done.** `@golf/insights`, 122 tests incl. planted-effect acceptance + negative control |
-| 5 — Insights UI / drills / LLM / MCP | Coach narrative layer, findings feed, and the drill library + prescription loop are done and running (early). MCP server not started |
+| 5 — Insights UI / drills / LLM / MCP | **Done.** Coach narrative layer, findings feed, drill library + prescription loop, and the MCP server are all built and running |
 | 6 — Address station | Not started. Vibrate bench parked (harness recipe in memory; hardware unverified) |
 
 ## What runs today
@@ -100,6 +100,40 @@ live "writing today's recap…" state that polls until it lands (a coach run
 outlives the request that starts it) and a visible error state. Drill ids
 resolve to display names server-side.
 
+**MCP server** (`@golf/mcp` + `apps/hub/src/mcp`): the practice history as MCP
+tools, so Claude Desktop / Claude Code can ask about it directly. Eight tools —
+`list_clubs`, `list_sessions`, `query_shots`, `get_bucket_status`,
+`get_baseline`, `get_findings`, `get_training_blocks`, `get_recaps`. Point a
+client at `tools/fairway-mcp.sh` (the config snippet is in the script's header).
+
+Three properties hold it together:
+
+- **Read-only, enforced by the driver.** It runs as its own process with a
+  read-only better-sqlite3 connection to `~/.fairway/hub.db`, so a write fails
+  at the driver rather than depending on every tool remembering not to. That
+  is what makes it safe for a model to call these speculatively: exploring
+  "what happened to my 7 iron" cannot prescribe a training block as a side
+  effect. Prescribing stays in the hub, driven by real shots arriving.
+  The hub need not be running; both processes can be live at once.
+- **The engine is the only source of numbers.** Tools project and filter
+  what `analyzeShots` computed — `query_shots` even reports the engine's
+  own per-shot projection, so a listed shot's wrist angles are the calibrated
+  ones `flipFlag` was decided from, not the raw fallback.
+- **Strict arguments.** An argument no tool declares is rejected, because
+  silently dropping a filter (`club` instead of `club_id`) answers a different
+  question than the one asked, with full confidence.
+
+The transport is hand-rolled (`protocol.ts` + `stdio.ts`, 10 conformance
+specs). `@modelcontextprotocol/sdk` is ESM-only and the hub is CJS end to end
+via swc-node — a dynamic import of it is rewritten to `require` and fails at
+runtime. A tools-only server needs four methods (`initialize`, `tools/list`,
+`tools/call`, `ping`), which costs less than threading an ESM seam through the
+app; the same trade `@golf/analysis` made with its SSE client. If it ever needs
+resources, prompts, sampling or a non-stdio transport, make the hub
+dual-format rather than growing that file. Tool failures come back as results
+with `isError`, not JSON-RPC errors, so the model sees a rejected argument and
+can fix it instead of the client swallowing it.
+
 **Replay harness**: `apps/hub/src/services.spec.ts` drives the whole loop
 headless (real monitor decode on fake TCP/UDP via `@golf/monitor/testing`,
 real wrist service replaying `captures/*.ndjson`, real SQLite). All hub
@@ -111,22 +145,21 @@ logic is developed against it.
    hit balls. First run shows one macOS Bluetooth prompt. The noble wrist
    transport has never touched the real sensor.
 2. **API key** for the first real coach recap (path above).
-3. **Phone `fairway.db`** for historical import (same DAO both sides —
-   import is a small follow-up once the file is on the Mac).
-4. **HERO 12 bench** when it arrives: firmware update, then
+3. **HERO 12 bench** when it arrives: firmware update, then
    `node tools/gopro-bench.mjs setup|clip|cycle|soak --ip <cam>` per
    GOPRO_CAPTURE.md. Item 1 (Hindsight at 1080p120) is go/no-go; buy the
    second body only on pass.
 
+**Historical import is cancelled, not pending** (Tim, 2026-07-30): there is no
+build on the phone, so `fairway.db` would be empty. The hub's own history is
+the only history. Nothing is waiting on that file — do not re-add it.
+
 ## Next build steps (in order)
 
-1. Historical import once the phone DB lands.
-2. Phase 2: RN capture app — ring-buffer spike first (chunked HEVC
+1. Phase 2: RN capture app — ring-buffer spike first (chunked HEVC
    segments vs native AVAssetWriter), live per-shot clips only, no batch;
    GoPro path folds in if the bench passes.
-3. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics.
-4. Phase 5 remainder: MCP server (`query_shots`, `get_baseline`,
-   `get_findings`, …).
+2. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics.
 
 ## Decisions log (with rationale, chronological)
 
@@ -153,6 +186,13 @@ logic is developed against it.
 - **No batch capture mode** (Tim) — live per-shot clips only.
 - **Coach = Managed Agents** in `@golf/coach` + hub edge client; recaps
   reuse `AnalysisVerdict`/`analyses` so the phone renders them unchanged.
+- **MCP server is read-only and hand-framed** (see above). Tools live in
+  `@golf/mcp` (pure, DataStore injected); the stdio transport lives at the hub
+  edge — the same lib/edge seam as the BLE and monitor transports.
+  Launched by `tools/fairway-mcp.sh`, deliberately NOT an nx target: nx writes
+  a banner to stdout and for a stdio server stdout IS the protocol.
+- **No phone import** (Tim, 2026-07-30) — nothing runs on the phone, so
+  there is nothing to import.
 - **EYE MINI spec correction**: the device never reports carry/offline —
   flight-model computed; face angle exists but is assurance-gated.
 - **Vibrate 0xcb**: wired end-to-end, hardware-unverified, parked (Tim).
@@ -162,7 +202,7 @@ logic is developed against it.
 - Hub handedness is a constant (`right`) in `apps/hub/src/main.ts` —
   settings surface pending.
 - No CI. `yarn nx run-many -t test,typecheck,lint` is the manual gate
-  (16 projects, 559 tests — re-run green as of this commit).
+  (17 projects, 587 tests — re-run green as of this commit).
 - Nx cannot build a project graph while sibling git worktrees are checked
   out: each one holds a second copy of every `libs/*` project.json and the
   duplicate names fail the whole graph. `.nxignore` excludes

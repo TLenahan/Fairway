@@ -2670,6 +2670,7 @@ __metadata:
     react: "npm:19.2.3"
     react-dom: "npm:19.2.3"
     ws: "npm:^8.18.0"
+    zod-to-json-schema: "npm:^3.25.2"
   languageName: unknown
   linkType: soft
 
@@ -2678,6 +2679,18 @@ __metadata:
   resolution: "@golf/insights@workspace:libs/insights"
   dependencies:
     "@golf/types": "workspace:*"
+  languageName: unknown
+  linkType: soft
+
+"@golf/mcp@workspace:libs/mcp":
+  version: 0.0.0-use.local
+  resolution: "@golf/mcp@workspace:libs/mcp"
+  dependencies:
+    "@golf/data": "workspace:*"
+    "@golf/insights": "workspace:*"
+    "@golf/program": "workspace:*"
+    "@golf/types": "workspace:*"
+    zod: "npm:^3.24.4"
   languageName: unknown
   linkType: soft
 
@@ -15217,6 +15230,15 @@ __metadata:
   version: 0.1.0
   resolution: "yocto-queue@npm:0.1.0"
   checksum: 10c0/dceb44c28578b31641e13695d200d34ec4ab3966a5729814d5445b194933c096b7ced71494ce53a0e8820685d1d010df8b2422e5bf2cdea7e469d97ffbea306f
+  languageName: node
+  linkType: hard
+
+"zod-to-json-schema@npm:^3.25.2":
+  version: 3.25.2
+  resolution: "zod-to-json-schema@npm:3.25.2"
+  peerDependencies:
+    zod: ^3.25.28 || ^4
+  checksum: 10c0/dd300554393903022487688af14fbda5c719ba8179702bb55b3aa86318830467f0f7beb7d654036975ac963dc4843b72e59636448bfff9a0608f277bb6a14939
   languageName: node
   linkType: hard
 
