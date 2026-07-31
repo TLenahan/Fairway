@@ -30,11 +30,28 @@ open apps/hub/dist-app/FairwayHub.app   # UI: http://localhost:4271, log: ~/.fai
 
 Dev without BLE: `HUB_NO_BLE=1 yarn nx run hub:serve`. `FAIRWAY_DATA_DIR`
 points the hub at a scratch data dir (DB + coach resources) for testing. DB at `~/.fairway/hub.db`
-(same `@golf/data` migrations as the phone, schema v8). The UI has session
-start/end, club picker, **intent picker** (stock/draw/fade), live shot log
-with warmup tags and wrist-join markers. EYE MINI auto-connects via UDP
-discovery; HackMotion candidates appear for click-to-connect
+(same `@golf/data` migrations as the phone, schema v10). The UI has session
+start/end, **focus-club picker**, **intent picker** (stock/draw/fade), live
+shot log with warmup tags and wrist-join markers. EYE MINI auto-connects via
+UDP discovery; HackMotion candidates appear for click-to-connect
 (`@stoprocent/noble` — @abandonware/noble is dead on macOS 26).
+
+**Session focus — one session, one club** (Tim, 2026-07-30). Every statistic
+keys on (club, intent), so a session that wanders the bag leaves every
+bucket short of the findings and certification gates. A session therefore
+declares a focus club: `Start session` is disabled until one is picked, the
+picker collapses to that club for the duration, and `Change focus…` ends the
+session and opens a new one on the chosen club. The store holds the
+invariant (`selectClub` rejects anything but the focus), so the rule is not
+just a UI convention. Two deliberate exemptions:
+
+- **Drill mode is exempt** — the wedge ladder is a club sweep by design.
+- **Implicit quick sessions get a focus too**, taken from the club the first
+  shot is stamped with. An unstarted session is a focused session the
+  golfer did not declare, not an unfocused one.
+
+`focusClubId` is nullable: sessions written before v10 and anything imported
+from the phone are legitimately unfocused, and the coach is told so.
 
 **Reform Coach** (Claude Managed Agents): activates when
 `ANTHROPIC_API_KEY` env or `~/.fairway/anthropic_api_key` exists. On session
@@ -106,6 +123,12 @@ logic is developed against it.
   `shots.warmup` (first 5 per session, re-taggable),
   `sessions.default_intent`. v7 (`wrist_swings`) came from the reform
   branch, merged.
+- **Schema v10 `sessions.focus_club_id`, one club per session** (Tim). A
+  single club — not a family (wedge/iron/wood) — because buckets are
+  per-club: an "iron session" mixing 7i and 9i still splits into two
+  half-depth buckets and clears no gate any sooner. Nullable and no FK: the
+  focus club may be archived later, and imported rows may name a club that
+  never landed on the hub.
 - **RN transports moved to app edge** (`rn-monitor-transport.ts`), making
   `@golf/monitor` Node-pure; its in-memory fakes are the shared replay
   harness (`@golf/monitor/testing`).
@@ -128,3 +151,13 @@ logic is developed against it.
   SDK deps).
 - `IMPACT_OFFSET_MS` (wrist coach keyframes) still untuned; needs hardware
   sessions.
+- **One recap per focused session, not per range trip.** Focus sessions
+  mean a three-club range trip now ends three sessions, and `onSessionEnd`
+  fires the coach each time — three narrower recaps instead of one. Each is
+  internally coherent (one club, its own findings) and the memory store
+  carries the day-level arc, so this is livable, but if Tim wants a single
+  trip-level recap the fix is a day-scoped export: gather every session
+  that started on the same local day and emit one payload with a block per
+  focus. `runDailyCoachRecap` is single-session today.
+- `config.wrist.flipExtensionMarginDeg` (3°) is a placeholder; it gates the
+  `flipFlag` that low-smash cause disambiguation reads.

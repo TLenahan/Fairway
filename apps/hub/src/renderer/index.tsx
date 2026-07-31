@@ -131,6 +131,71 @@ const CERTIFICATION_WORDS: Record<CertificationStatus, string> = {
 const certificationClass = (status: CertificationStatus): string =>
   status === 'certified' ? 'good' : status === 'uncertified' ? 'dim' : 'warn';
 
+/**
+ * One session, one club. Before a session the picker chooses the focus;
+ * during one it shows only the focus, because every statistic keys on
+ * (club, intent) and a session that wanders the bag leaves every bucket
+ * short of the gates. Switching focus is deliberate: it ends the session
+ * (which recaps that club's work) and opens a new one.
+ */
+function ClubPicker({
+  snapshot,
+  send,
+}: {
+  snapshot: HubSnapshot;
+  send(command: HubCommand): void;
+}): React.JSX.Element {
+  const [switching, setSwitching] = useState(false);
+  const focusClubId = snapshot.session?.focusClubId ?? null;
+  const inSession = snapshot.session !== null && snapshot.session.endedAt === null;
+  const locked = inSession && focusClubId !== null && !switching;
+
+  const changeFocus = (clubId: string): void => {
+    setSwitching(false);
+    send({ cmd: 'endSession' });
+    send({ cmd: 'startSession', intent: snapshot.activeIntent, focusClubId: clubId });
+  };
+
+  const shown = locked
+    ? snapshot.clubs.filter((c) => c.id === focusClubId)
+    : snapshot.clubs;
+
+  return (
+    <>
+      <div className="row" style={{ marginTop: 10 }}>
+        {!inSession && snapshot.activeClubId === null && (
+          <span className="dim">Pick the club this session is about:</span>
+        )}
+        {locked && <span className="dim">Focus:</span>}
+        {shown.map((club) => (
+          <button
+            key={club.id}
+            className={club.id === snapshot.activeClubId ? 'active' : ''}
+            onClick={() =>
+              switching
+                ? changeFocus(club.id)
+                : send({ cmd: 'selectClub', clubId: club.id })
+            }
+          >
+            {club.name}
+          </button>
+        ))}
+        {locked && (
+          <button onClick={() => setSwitching(true)}>Change focus…</button>
+        )}
+        {switching && (
+          <button onClick={() => setSwitching(false)}>Cancel</button>
+        )}
+      </div>
+      {switching && (
+        <div className="dim" style={{ marginTop: 6 }}>
+          Picking a club ends this session and starts a new one on it.
+        </div>
+      )}
+    </>
+  );
+}
+
 function Dot({ state }: { state: string }): React.JSX.Element {
   const color =
     state === 'connected'
@@ -300,7 +365,14 @@ function App(): React.JSX.Element {
           ) : (
             <button
               className="primary"
-              onClick={() => send({ cmd: 'startSession', intent: s.activeIntent })}
+              disabled={s.activeClubId === null}
+              onClick={() =>
+                send({
+                  cmd: 'startSession',
+                  intent: s.activeIntent,
+                  ...(s.activeClubId ? { focusClubId: s.activeClubId } : {}),
+                })
+              }
             >
               Start session
             </button>
@@ -318,17 +390,7 @@ function App(): React.JSX.Element {
             </button>
           ))}
         </div>
-        <div className="row" style={{ marginTop: 10 }}>
-          {s.clubs.map((club) => (
-            <button
-              key={club.id}
-              className={club.id === s.activeClubId ? 'active' : ''}
-              onClick={() => send({ cmd: 'selectClub', clubId: club.id })}
-            >
-              {club.name}
-            </button>
-          ))}
-        </div>
+        <ClubPicker snapshot={s} send={send} />
       </div>
 
       <div className="panel">

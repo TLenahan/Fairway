@@ -145,13 +145,18 @@ class FakeData implements DataStore {
   }
   async archiveClub(): Promise<void> {}
   async createSession(
-    input: Omit<Session, 'id' | 'createdAt' | 'endedAt' | 'defaultIntent'> & {
+    input: Omit<
+      Session,
+      'id' | 'createdAt' | 'endedAt' | 'defaultIntent' | 'focusClubId'
+    > & {
       defaultIntent?: ShotIntent;
+      focusClubId?: string | null;
     },
   ): Promise<Session> {
     const created: Session = {
       ...input,
       defaultIntent: input.defaultIntent ?? 'stock',
+      focusClubId: input.focusClubId ?? null,
       id: `session-${this.nextId++}`,
       createdAt: 1,
       endedAt: null,
@@ -652,7 +657,7 @@ describe('createFairwayStore — intent & warmup', () => {
         temperatureC: null,
         presetName: 'Home ~6,000 ft',
       },
-      'draw',
+      { defaultIntent: 'draw' },
     );
     expect(store.getState().session?.defaultIntent).toBe('draw');
     expect(store.getState().activeIntent).toBe('draw');
@@ -928,5 +933,99 @@ describe('createFairwayStore — drill mode', () => {
       'Unknown club: nope',
     );
     expect(store.getState().drill).toBeNull();
+  });
+});
+
+describe('createFairwayStore — session focus', () => {
+  const ENV = { altitudeM: 0, temperatureC: null, presetName: null };
+
+  it('stamps and activates the focus club named at start', async () => {
+    const { data, store } = build();
+    await withActiveIron(store);
+    const wedge = await createWedge(data, '56°', 56);
+
+    await store.getState().startSession(ENV, { focusClubId: wedge.id });
+
+    expect(store.getState().session?.focusClubId).toBe(wedge.id);
+    // the declared subject and the club shots get stamped with must agree
+    expect(store.getState().activeClub?.id).toBe(wedge.id);
+  });
+
+  it('falls back to the active club when no focus is named', async () => {
+    const { store } = build();
+    await withActiveIron(store);
+    const iron = store.getState().activeClub;
+
+    await store.getState().startSession(ENV);
+
+    expect(store.getState().session?.focusClubId).toBe(iron?.id);
+  });
+
+  it('refuses a club other than the focus while a session is live', async () => {
+    const { data, store } = build();
+    await withActiveIron(store);
+    const iron = store.getState().activeClub;
+    const wedge = await createWedge(data, '60°', 60);
+    await store.getState().startSession(ENV, { focusClubId: iron!.id });
+
+    await expect(store.getState().selectClub(wedge.id)).rejects.toThrow(
+      /focused on one club/,
+    );
+    // rejected outright — no half-switch that would mis-stamp the next shot
+    expect(store.getState().activeClub?.id).toBe(iron?.id);
+  });
+
+  it('allows re-selecting the focus club itself', async () => {
+    const { store } = build();
+    await withActiveIron(store);
+    const iron = store.getState().activeClub;
+    await store.getState().startSession(ENV, { focusClubId: iron!.id });
+
+    await expect(
+      store.getState().selectClub(iron!.id),
+    ).resolves.toBeUndefined();
+  });
+
+  it('lets a shot land on any club once the session has ended', async () => {
+    const { data, store } = build();
+    await withActiveIron(store);
+    const iron = store.getState().activeClub;
+    const wedge = await createWedge(data, '52°', 52);
+    await store.getState().startSession(ENV, { focusClubId: iron!.id });
+    await store.getState().endSession();
+
+    await store.getState().selectClub(wedge.id);
+    expect(store.getState().activeClub?.id).toBe(wedge.id);
+  });
+
+  it('exempts drill mode — the wedge ladder spans clubs by design', async () => {
+    const { data, store } = build();
+    const gap = await createWedge(data, '52°', 52);
+    const sand = await createWedge(data, '56°', 56);
+    await store.getState().startSession(ENV, { focusClubId: gap.id });
+    await store.getState().startDrill([gap.id, sand.id]);
+
+    await store.getState().selectDrillRung(sand.id, 'mid');
+    expect(store.getState().activeClub?.id).toBe(sand.id);
+
+    // ...and the lock is back the moment the drill ends
+    store.getState().endDrill();
+    await expect(store.getState().selectClub(sand.id)).rejects.toThrow(
+      /focused on one club/,
+    );
+  });
+
+  it('gives an implicit quick session the focus of the shot that made it', async () => {
+    const { monitor, data, store } = build();
+    await withActiveIron(store);
+    const iron = store.getState().activeClub;
+
+    monitor.emit('shot', measuredFixture('g-1'));
+    await flush();
+
+    // an unstarted session is a focused session the golfer did not declare,
+    // not an unfocused one
+    expect(data.sessions[0].focusClubId).toBe(iron?.id);
+    expect(store.getState().session?.focusClubId).toBe(iron?.id);
   });
 });

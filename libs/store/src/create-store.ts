@@ -16,6 +16,7 @@ import {
   MonitorService,
   ShotIntent,
   ShotRecord,
+  StartSessionOptions,
   WristService,
   WristShot,
   WristSlice,
@@ -98,13 +99,22 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     session: null,
     activeClub: null,
     activeIntent: 'stock',
-    async startSession(env: Environment, defaultIntent: ShotIntent = 'stock') {
+    async startSession(env: Environment, opts: StartSessionOptions = {}) {
+      const defaultIntent = opts.defaultIntent ?? 'stock';
+      // One session, one club: the focus is resolved and ACTIVATED here, so
+      // the session's declared subject and the club shots get stamped with
+      // can never disagree.
+      const focus = opts.focusClubId
+        ? await clubById(opts.focusClubId)
+        : await ensureClub();
+      await activateClub(focus);
       const session = await data.createSession({
         name: null,
         notes: null,
         startedAt: Date.now(),
         environment: env,
         defaultIntent,
+        focusClubId: focus.id,
       });
       set({ session, sessionShots: [], activeIntent: defaultIntent });
     },
@@ -115,9 +125,15 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
       set({ session: null, sessionShots: [], lastShot: null });
     },
     async selectClub(clubId: string) {
-      const clubs = await data.listClubs({ includeArchived: true });
-      const club = clubs.find((c) => c.id === clubId);
-      if (!club) throw new Error(`Unknown club: ${clubId}`);
+      const club = await clubById(clubId);
+      const focus = get().session?.focusClubId;
+      // Drill mode is the one legitimate multi-club exercise (the wedge
+      // ladder IS a club sweep), so it opts out of the focus lock.
+      if (focus && focus !== clubId && get().drill === null) {
+        throw new Error(
+          `Session is focused on one club — end it to switch to ${club.name}`,
+        );
+      }
       await activateClub(club);
     },
     async createClub(input: Omit<Club, 'id' | 'createdAt' | 'sensorMode'>) {
@@ -205,6 +221,13 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     },
   }));
 
+  async function clubById(clubId: string): Promise<Club> {
+    const clubs = await data.listClubs({ includeArchived: true });
+    const club = clubs.find((c) => c.id === clubId);
+    if (!club) throw new Error(`Unknown club: ${clubId}`);
+    return club;
+  }
+
   /** re-tag is free; only a sensor-mode change costs a device round-trip */
   async function activateClub(club: Club): Promise<void> {
     const previous = get().activeClub;
@@ -220,12 +243,16 @@ export function createFairwayStore(deps: FairwayStoreDeps) {
     const existing = get().session;
     if (existing) return existing;
     // Implicit "quick session" (BUILD_SPEC F2): never lose a shot because no
-    // session was started.
+    // session was started. It still gets a focus — whatever club the shot is
+    // about to be stamped with — so an unstarted session is a focused session
+    // the golfer simply did not declare, not an unfocused one.
+    const club = await ensureClub();
     const session = await data.createSession({
       name: 'Quick session',
       notes: null,
       startedAt: Date.now(),
       environment: getDefaultEnvironment(),
+      focusClubId: club.id,
     });
     set({ session, sessionShots: [] });
     return session;

@@ -123,7 +123,10 @@ export async function startHubServer(
       case 'disconnectMini':
         return store.disconnect();
       case 'startSession':
-        return store.startSession(config.environment, command.intent);
+        return store.startSession(config.environment, {
+          ...(command.intent ? { defaultIntent: command.intent } : {}),
+          ...(command.focusClubId ? { focusClubId: command.focusClubId } : {}),
+        });
       case 'endSession': {
         const endedSessionId = store.session?.id;
         await store.endSession();

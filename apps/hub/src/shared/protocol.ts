@@ -54,7 +54,7 @@ export type HubCommand =
   | { cmd: 'startDiscovery' }
   | { cmd: 'connectMini'; ip: string }
   | { cmd: 'disconnectMini' }
-  | { cmd: 'startSession'; intent?: ShotIntent }
+  | { cmd: 'startSession'; intent?: ShotIntent; focusClubId?: string }
   | { cmd: 'endSession' }
   | { cmd: 'selectClub'; clubId: string }
   | { cmd: 'setActiveIntent'; intent: ShotIntent }

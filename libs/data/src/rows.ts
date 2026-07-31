@@ -63,6 +63,7 @@ export interface SessionRow {
   temperature_c: number | null;
   env_preset: string | null;
   default_intent: string;
+  focus_club_id: string | null;
   created_at: number;
 }
 
@@ -79,6 +80,7 @@ export function mapSessionRow(row: SessionRow): Session {
       presetName: row.env_preset,
     },
     defaultIntent: row.default_intent,
+    focusClubId: row.focus_club_id,
     createdAt: row.created_at,
   });
 }

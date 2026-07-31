@@ -93,6 +93,7 @@ const session: Session = {
   endedAt: 2_000_000,
   environment: { altitudeM: 1800, temperatureC: 22, presetName: null },
   defaultIntent: 'stock',
+  focusClubId: 'club-1',
   createdAt: 1_000_000,
 };
 

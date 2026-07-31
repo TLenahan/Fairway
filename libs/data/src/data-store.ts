@@ -139,13 +139,14 @@ export function createDataStore(
       const session: Session = {
         ...input,
         defaultIntent: input.defaultIntent ?? 'stock',
+        focusClubId: input.focusClubId ?? null,
         id: newId(),
         createdAt: now(),
         endedAt: null,
       };
       await db.runAsync(
-        `INSERT INTO sessions (id, name, notes, started_at, ended_at, altitude_m, temperature_c, env_preset, default_intent, created_at)
-         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, name, notes, started_at, ended_at, altitude_m, temperature_c, env_preset, default_intent, focus_club_id, created_at)
+         VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
         [
           session.id,
           session.name,
@@ -155,6 +156,7 @@ export function createDataStore(
           session.environment.temperatureC,
           session.environment.presetName,
           session.defaultIntent,
+          session.focusClubId,
           session.createdAt,
         ],
       );

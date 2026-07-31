@@ -69,6 +69,9 @@ export interface DailySessionExport {
   started_at_ms: number;
   ended_at_ms: number | null;
   default_intent: ShotIntent;
+  /** the one club this session was about; absent on unfocused/imported ones */
+  focus_club_id?: string;
+  focus_club_name?: string;
   handedness: Handed;
   environment: { altitude_m: number; temperature_c: number | null };
   clubs: ExportClubRow[];
@@ -91,6 +94,20 @@ const opt = <K extends keyof ExportShotRow>(
   digits: number,
 ): Partial<ExportShotRow> =>
   value === null ? {} : { [key]: round(value, digits) };
+
+/** The session's declared subject, named — omitted entirely when the session
+    predates focus (v10) or was imported from the phone. */
+function focusRows(
+  focusClubId: string | null,
+  clubs: Club[],
+): Pick<DailySessionExport, 'focus_club_id' | 'focus_club_name'> {
+  if (focusClubId === null) return {};
+  const name = clubs.find((c) => c.id === focusClubId)?.name;
+  return {
+    focus_club_id: focusClubId,
+    ...(name === undefined ? {} : { focus_club_name: name }),
+  };
+}
 
 export function buildDailySessionExport(
   session: Session,
@@ -149,6 +166,7 @@ export function buildDailySessionExport(
     started_at_ms: session.startedAt,
     ended_at_ms: session.endedAt,
     default_intent: session.defaultIntent,
+    ...focusRows(session.focusClubId, clubs),
     handedness,
     environment: {
       altitude_m: session.environment.altitudeM,

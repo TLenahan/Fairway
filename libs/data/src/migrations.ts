@@ -269,6 +269,20 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 10,
+    async up(db) {
+      // One session, one club. Every statistic keys on (club, intent), so a
+      // session spread across the bag leaves every bucket short of the
+      // findings and certification gates. Nullable, no FK: sessions written
+      // before v10 and anything imported from the phone are legitimately
+      // unfocused, and the club may be archived later. Plain ALTER — same
+      // crash-window trade-off as v2–v4/v6/v8.
+      await db.execAsync(
+        'ALTER TABLE sessions ADD COLUMN focus_club_id TEXT;',
+      );
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {

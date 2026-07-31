@@ -21,15 +21,29 @@ export interface LiveSlice {
   lastShot: MeasuredShot | null;
   sessionShots: ShotRecord[]; // shots in the active session, newest first
 }
+export interface StartSessionOptions {
+  defaultIntent?: ShotIntent;
+  /**
+   * The one club the session is about. Falls back to the active club (or the
+   * first club, matching the implicit-session path) so a caller that has
+   * already picked a club need not repeat it.
+   */
+  focusClubId?: string;
+}
+
 export interface ActiveSessionSlice {
   session: Session | null;
   activeClub: Club | null;
   /** intent stamped onto every incoming shot (Insights §6.1); starts at the
       session's defaultIntent, changeable mid-session via setActiveIntent */
   activeIntent: ShotIntent;
-  startSession(env: Environment, defaultIntent?: ShotIntent): Promise<void>;
+  startSession(env: Environment, opts?: StartSessionOptions): Promise<void>;
   endSession(): Promise<void>;
-  // re-tags; reconfigures sensor only if mode changes
+  /**
+   * Re-tags; reconfigures the sensor only if the mode changes. Rejects any
+   * club but the session's focus while a session is live — one session, one
+   * club (drill mode is exempt; the wedge ladder spans clubs by design).
+   */
   selectClub(clubId: string): Promise<void>;
   // quick-add mid-session
   createClub(

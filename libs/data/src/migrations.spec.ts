@@ -5,7 +5,7 @@ describe('migration harness', () => {
   it('migrates a fresh database to the latest version', async () => {
     const db = openTestDatabase();
     const version = await runMigrations(db);
-    expect(version).toBe(9);
+    expect(version).toBe(10);
 
     const tables = await db.getAllAsync<{ name: string }>(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -28,7 +28,7 @@ describe('migration harness', () => {
   it('is idempotent — re-running applies nothing', async () => {
     const db = openTestDatabase();
     await runMigrations(db);
-    await expect(runMigrations(db)).resolves.toBe(9);
+    await expect(runMigrations(db)).resolves.toBe(10);
     db.close();
   });
 
@@ -67,7 +67,7 @@ describe('migration harness', () => {
          '{}'
        )`,
     );
-    await expect(runMigrations(db)).resolves.toBe(9);
+    await expect(runMigrations(db)).resolves.toBe(10);
     const row = await db.getFirstAsync<{ curve_m: number | null }>(
       "SELECT curve_m FROM shots WHERE id = 'x1'",
     );
@@ -149,7 +149,7 @@ describe('migration harness', () => {
          97, 95, 95, 0, 95, 0, 0, 0, 0, '{}'
        )`,
     );
-    await expect(runMigrations(db)).resolves.toBe(9);
+    await expect(runMigrations(db)).resolves.toBe(10);
     const session = await db.getFirstAsync<{ default_intent: string }>(
       "SELECT default_intent FROM sessions WHERE id = 's1'",
     );
@@ -310,7 +310,7 @@ describe('migration harness', () => {
     );
     expect(before).toEqual([]);
 
-    await expect(runMigrations(db)).resolves.toBe(9);
+    await expect(runMigrations(db)).resolves.toBe(10);
 
     const columns = await db.getAllAsync<{ name: string }>(
       'PRAGMA table_info(training_blocks)',
@@ -339,6 +339,39 @@ describe('migration harness', () => {
     expect(row?.status).toBe('active');
     expect(row?.tolerance_json).toBeNull();
     expect(row?.resolved_at).toBeNull();
+    db.close();
+  });
+
+  it('v10 adds a nullable focus_club_id to sessions persisted by v9', async () => {
+    const db = openTestDatabase();
+    for (const migration of MIGRATIONS.slice(0, 9)) {
+      await migration.up(db);
+    }
+    await db.execAsync('PRAGMA user_version = 9');
+    await db.runAsync(
+      `INSERT INTO sessions (id, name, notes, started_at, altitude_m, default_intent, created_at)
+       VALUES ('s1', NULL, NULL, 100, 0, 'stock', 100)`,
+    );
+
+    await expect(runMigrations(db)).resolves.toBe(10);
+
+    // sessions that predate focus stay unfocused rather than being backfilled
+    // with a guess — null is the honest value, and the coach is told so
+    const legacy = await db.getFirstAsync<{ focus_club_id: string | null }>(
+      "SELECT focus_club_id FROM sessions WHERE id = 's1'",
+    );
+    expect(legacy?.focus_club_id).toBeNull();
+
+    // no FK on the column: a focused session must survive its club being
+    // archived, and imported rows may reference clubs that never landed
+    await db.runAsync(
+      `INSERT INTO sessions (id, name, notes, started_at, altitude_m, default_intent, focus_club_id, created_at)
+       VALUES ('s2', NULL, NULL, 200, 0, 'stock', 'not-a-club', 200)`,
+    );
+    const focused = await db.getFirstAsync<{ focus_club_id: string | null }>(
+      "SELECT focus_club_id FROM sessions WHERE id = 's2'",
+    );
+    expect(focused?.focus_club_id).toBe('not-a-club');
     db.close();
   });
 });

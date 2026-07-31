@@ -17,10 +17,15 @@ export interface DataStore {
   updateClub(id: string, patch: Partial<Club>): Promise<Club>;
   listClubs(opts?: { includeArchived?: boolean }): Promise<Club[]>;
   archiveClub(id: string): Promise<void>;
-  // sessions — defaultIntent optional so pre-Insights callers keep compiling
+  // sessions — defaultIntent/focusClubId optional so callers predating them
+  // keep compiling; both default to their unfocused/quarantine value
   createSession(
-    input: Omit<Session, 'id' | 'createdAt' | 'endedAt' | 'defaultIntent'> & {
+    input: Omit<
+      Session,
+      'id' | 'createdAt' | 'endedAt' | 'defaultIntent' | 'focusClubId'
+    > & {
       defaultIntent?: ShotIntent;
+      focusClubId?: string | null;
     },
   ): Promise<Session>;
   endSession(id: string): Promise<Session>;
