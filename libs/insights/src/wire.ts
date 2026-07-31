@@ -1,7 +1,7 @@
 import { Club, ShotIntent, ShotRecord } from '@golf/types';
 
 import { DEFAULT_INSIGHTS_CONFIG, InsightsConfig } from './config';
-import { analyzeShots } from './engine';
+import { InsightsReport, analyzeShots } from './engine';
 import { toInsightShot } from './projection';
 import {
   CertificationStatus,
@@ -93,14 +93,34 @@ export function toInsightShots(
  * full history for the clubs in play — findings and baselines are
  * cross-session by definition; a single session is not enough to certify or
  * to clear the persistence guardrail.
+ *
+ * Callers that already hold a report should call `serializeReport` instead of
+ * paying for a second engine pass.
  */
 export function buildInsightsWire(
   shots: readonly ShotRecord[],
   clubs: readonly Club[],
   config: InsightsConfig = DEFAULT_INSIGHTS_CONFIG,
 ): InsightsWire {
+  return serializeReport(analyzeShots(toInsightShots(shots, clubs), config), clubs);
+}
+
+/**
+ * The serialization half, split out so a caller that already ran the engine
+ * — the hub's prescription loop, the MCP query surface — does not run it
+ * again just to get the wire shape. `clubs` is needed only to resolve display
+ * names: the report itself carries ids.
+ *
+ * This is the ONE projection of a report onto the wire. Anything that wants a
+ * finding or a bucket in serializable form goes through here, so the coach
+ * payload, the hub UI and MCP can never be shown three different roundings of
+ * the same number.
+ */
+export function serializeReport(
+  report: InsightsReport,
+  clubs: readonly Club[],
+): InsightsWire {
   const name = new Map(clubs.map((c) => [c.id, c.name]));
-  const report = analyzeShots(toInsightShots(shots, clubs), config);
 
   return {
     findings: report.findings.map((f) => ({

@@ -7,12 +7,22 @@ import { SqlDatabase, SqlValue } from './database';
  * Mac hub (via the `@golf/data/node` path alias) and by jest through
  * testing/better-sqlite3-adapter. Deliberately NOT exported from the lib
  * index — the app bundle must never pull in better-sqlite3.
+ *
+ * `readonly` opens the file for reading only, and the driver rejects every
+ * write. It is what the MCP server runs on: a read-only surface enforced by
+ * a flag beats one enforced by everybody remembering not to write. Note that
+ * a read-only connection cannot run migrations, so it requires a database the
+ * hub has already created.
  */
-export function openNodeDatabase(filename = ':memory:'): SqlDatabase & {
+export function openNodeDatabase(
+  filename = ':memory:',
+  opts: { readonly?: boolean } = {},
+): SqlDatabase & {
   close(): void;
 } {
-  const db = new BetterSqlite3(filename);
-  db.pragma('foreign_keys = ON');
+  const db = new BetterSqlite3(filename, { readonly: opts.readonly ?? false });
+  // Foreign keys constrain writes, and this connection cannot make any.
+  if (!opts.readonly) db.pragma('foreign_keys = ON');
   return {
     async execAsync(sql: string): Promise<void> {
       db.exec(sql);

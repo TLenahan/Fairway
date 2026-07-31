@@ -1,0 +1,7 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "mcp",
+  "sourceRoot": "libs/mcp/src",
+  "projectType": "library",
+  "tags": ["scope:golf", "type:util", "lib:mcp"]
+}

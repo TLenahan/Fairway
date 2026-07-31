@@ -1,0 +1,17 @@
+{
+  "name": "@golf/mcp",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@golf/data": "workspace:*",
+    "@golf/insights": "workspace:*",
+    "@golf/program": "workspace:*",
+    "@golf/types": "workspace:*",
+    "zod": "^3.24.4"
+  }
+}

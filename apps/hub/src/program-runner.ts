@@ -1,14 +1,12 @@
-import { analyzeShots, buildInsightsWire, toInsightShots } from '@golf/insights';
+import { loadShotHistory } from '@golf/data';
+import { analyzeShots, serializeReport, toInsightShots } from '@golf/insights';
 import {
   TrainingBlockWire,
-  drillById,
-  parseFindingKey,
   planTrainingBlocks,
-  toBlockWire,
+  resolveBlockWire,
 } from '@golf/program';
 import { Club, DataStore, TrainingBlock } from '@golf/types';
 
-import { loadShotHistory } from './coach/recap-runner';
 import { HubInsightsPayload } from './shared/protocol';
 
 /**
@@ -95,28 +93,18 @@ export async function runProgramLoop(
     // block frees its finding to be prescribed again) but have nothing to
     // say to a UI or a coach.
     .filter((block) => block.status !== 'abandoned')
-    .map(toWire)
+    .map(resolveBlockWire)
     .sort(compareBlocks);
 
-  // NOTE: `buildInsightsWire` re-runs `analyzeShots` internally. It is the
-  // only serializer for a report, and the engine is pure, so the second pass
-  // costs time but can never disagree with the first.
+  // The same `report` the plan was built from is what gets serialized —
+  // `serializeReport` is the only projection of a report onto the wire, so
+  // the payload cannot describe a different engine run than the one that
+  // decided these prescriptions.
   return {
-    payload: { ...buildInsightsWire(shots, clubs), blocks },
+    payload: { ...serializeReport(report, clubs), blocks },
     prescribed,
     resolved,
   };
-}
-
-/** A block's findingKey is persisted text that outlives the code that wrote
-    it, so an unparseable one degrades to "no failure mode named" rather than
-    taking the payload down (see `parseFindingKey`). */
-function toWire(block: TrainingBlock): TrainingBlockWire {
-  return toBlockWire(
-    block,
-    drillById(block.drillId),
-    block.findingKey === null ? null : parseFindingKey(block.findingKey),
-  );
 }
 
 /**
