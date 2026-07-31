@@ -13,7 +13,7 @@ feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 | 0 — Audit + core extraction | **Done.** The `@golf/*` lib layer already was the extraction; audit + reuse matrix in INSIGHTS_AUDIT.md |
 | 1 — Mac hub MVP | **Code-complete.** Awaiting the first live-hardware run |
 | 2 — Capture clients + clips | **GoPro path complete end to end** — seam, driver, UI playback; awaiting a body. RN capture app not started (ring-buffer spike is its gate). **No batch mode (Tim).** |
-| 3 — Pose pipeline | Not started (Python/uv worker, MediaPipe) |
+| 3 — Pose pipeline | **Not started — nothing pose-related exists in the repo.** No Python anywhere (no `pyproject.toml`, no `uv.lock`, no `.py`), no MediaPipe, no landmark extraction. Now the front of the queue: the GoPro makes clips and nothing reads one |
 | 4 — Analytics engine | **Done.** `@golf/insights`, 122 tests incl. planted-effect acceptance + negative control |
 | 5 — Insights UI / drills / LLM / MCP | **Done.** Coach narrative layer, findings feed, drill library + prescription loop, and the MCP server are all built and running |
 | 6 — Address station | Not started. Vibrate bench parked (harness recipe in memory; hardware unverified) |
@@ -272,6 +272,19 @@ the only history. Nothing is waiting on that file — do not re-add it.
    produces clips, and nothing yet reads one. The impact-audio pass that earns
    a clip `sync: 'fine'` belongs here too — every GoPro clip is `coarse` by
    construction, and it is the only thing that can change that.
+
+   Two things the seam already put in place for it. `setClipImpactOffset`
+   exists on `DataStore` with **no production caller** — it is the write-back
+   waiting for the audio pass, and the reason `impactOffsetMs` is nullable
+   rather than defaulting to 0 (0 is a real answer: impact on the first frame).
+   And `GET /api/clips?sessionId=` plus the Range-capable file endpoint are
+   already the read side; the worker needs nothing new from the hub to start.
+
+   Shape it as a **batch consumer with its own queue, not something in the shot
+   loop.** MediaPipe on 1080p120 is nowhere near real time and does not need to
+   be — a clip is ~9 s and every metric it yields is retrospective. Putting it
+   in the capture path would only add a way for the pose stage to cost a shot
+   its clip.
 2. **RN capture app** — ring-buffer spike first (chunked HEVC segments vs
    native AVAssetWriter), live per-shot clips only, no batch. The spike is the
    gate and needs a device; its outcome does not change the hub contract, only
