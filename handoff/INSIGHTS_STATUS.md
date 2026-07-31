@@ -12,7 +12,7 @@ feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 |---|---|
 | 0 — Audit + core extraction | **Done.** The `@golf/*` lib layer already was the extraction; audit + reuse matrix in INSIGHTS_AUDIT.md |
 | 1 — Mac hub MVP | **Code-complete.** Awaiting the first live-hardware run |
-| 2 — Capture clients + clips | **Hub side done** (clip seam: schema, ingest, playback). Capture clients not started — the ring-buffer spike is still the gate. **No batch mode (Tim).** A GoPro body may join per the GOPRO_CAPTURE.md bench |
+| 2 — Capture clients + clips | **GoPro path complete end to end** — seam, driver, UI playback; awaiting a body. RN capture app not started (ring-buffer spike is its gate). **No batch mode (Tim).** |
 | 3 — Pose pipeline | Not started (Python/uv worker, MediaPipe) |
 | 4 — Analytics engine | **Done.** `@golf/insights`, 122 tests incl. planted-effect acceptance + negative control |
 | 5 — Insights UI / drills / LLM / MCP | **Done.** Coach narrative layer, findings feed, drill library + prescription loop, and the MCP server are all built and running |
@@ -179,14 +179,73 @@ Two invariants worth not breaking:
   whatever wrote it, and serving arbitrary files off the hub's disk is not a
   risk worth taking on that.
 
-Cameras are configured, not assumed: `HUB_CAMERAS=phone:face_on,gopro:down_the_line`.
-Unset means no cameras and therefore no requests — a hub with nothing pointed at
-the bay should not spend every shot asking an empty room for a clip.
+Cameras are configured, not assumed:
+`HUB_CAMERAS=phone:face_on,gopro:down_the_line@172.24.106.51`. Unset means no
+cameras and therefore no requests — a hub with nothing pointed at the bay should
+not spend every shot asking an empty room for a clip. The optional `@address` is
+what splits the two kinds of camera: a phone finds the hub itself, a GoPro can
+be told nothing, so the hub runs the client for it and that client needs to know
+which body to talk to. It rides on the camera entry rather than in a second
+variable so there is still exactly one list of what is pointed at the bay.
+
+**GoPro driver** (`apps/hub/src/capture/gopro`, on the assumption the HERO 12
+does Hindsight at 1080p120 — Tim, 2026-07-30): the first camera client, running
+inside the hub. Per shot it locks the pre-roll with `shutter/start`, records
+3.5 s forward, stops, waits out the encode, pulls the save over USB, trims it
+and uploads it against the request that asked for it. `camera.ts` is the Open
+GoPro 2.0 HTTP transport, `trim.ts` the ffmpeg shell-out, `driver.ts` the loop;
+the camera and ffmpeg are the only things the tests fake.
+
+It talks to the seam over loopback HTTP even though the registry is an object
+away, so the contract has one shape rather than two — and so the driver could
+move to a box next to the camera without changing.
+
+Three things it will not do, all the same rule as the seam's own — a clip filed
+against the wrong swing is worse than a missing one:
+
+- **It refuses a request older than the pre-roll can reach back to.** Hindsight
+  is a window ending at the trigger, so a request answered ~8.5 s late (15 s
+  buffer, 5 s of run-up wanted, margin for the monitor's own lag) would save
+  what happened AFTER the swing and file it as the swing.
+- **It refuses a clip with under 1.5 s of measured run-up**, however the trim
+  came out — a clip with no backswing in it is not a swing clip.
+- **It does not trigger while Hindsight is down.** A save drops the buffer while
+  the camera writes it; until status 106 is back, triggering would hand back a
+  clip with no pre-roll at all.
+
+**Everything is measured from the END of the file**, which is the only instant
+in it the hub knows: the moment it said stop. The start is unknown twice over —
+the buffer may not have been full, and `-c copy` snaps the cut back to the
+previous keyframe, so the clip is some unknown amount longer at the front than
+the trim asked for. So the driver asks for a generous tail and then computes
+`impactOffsetMs = probedDuration - (stopTime - requestTime)`. Keyframe slop
+lands in the pre-roll where it belongs, and the offset is right without anyone
+knowing where the cut fell. The residual — the stop command's round trip, and
+the monitor's own latency before `requestedAt` — is exactly what keeps every
+clip `coarse` until the audio pass.
+
+Operational notes: **ffmpeg is a hard dependency** (`brew install ffmpeg`); the
+driver preflights it and refuses to start without it, because otherwise every
+capture would pull 200 MB over USB and have nothing to do with it. An
+unreachable camera is *not* fatal — the same watchdog that handles the ~15 min
+idle self-disarm covers a cable plugged in after the hub started, so there is
+one recovery path rather than three. Trimmed clips live under the data dir; the
+untrimmed originals stay on the camera's card (~120 MB a shot), so clear it
+between range trips.
+
+**Clip playback in the UI**: a shot row with clips offers one button per view;
+the player opens at impact (`#t=`) and reports duration, fps, frame size and how
+well the sync is known. Clips are polled while a session is live rather than
+pushed — one lands seconds after its shot, and none of that touches the store.
 
 **Replay harness**: `apps/hub/src/services.spec.ts` drives the whole loop
 headless (real monitor decode on fake TCP/UDP via `@golf/monitor/testing`,
 real wrist service replaying `captures/*.ndjson`, real SQLite). All hub
-logic is developed against it.
+logic is developed against it. The capture seam has its own
+(`apps/hub/src/capture/testing.ts`) — real endpoints, registry, SQLite and clip
+files, shared by the endpoint and driver specs. The driver runs against it on a
+fake clock that only moves when the driver sleeps, so a nine-second capture
+costs jest nothing and every derived timing is exactly reproducible.
 
 ## Waiting on Tim
 
@@ -194,10 +253,12 @@ logic is developed against it.
    hit balls. First run shows one macOS Bluetooth prompt. The noble wrist
    transport has never touched the real sensor.
 2. **API key** for the first real coach recap (path above).
-3. **HERO 12 bench** when it arrives: firmware update, then
-   `node tools/gopro-bench.mjs setup|clip|cycle|soak --ip <cam>` per
-   GOPRO_CAPTURE.md. Item 1 (Hindsight at 1080p120) is go/no-go; buy the
-   second body only on pass.
+3. **HERO 12 bench** when it arrives: `brew install ffmpeg`, firmware update,
+   then `node tools/gopro-bench.mjs setup|clip|cycle|soak --ip <cam>` per
+   GOPRO_CAPTURE.md, then the hub itself with
+   `HUB_CAMERAS=gopro:down_the_line@<cam-ip>`. The driver is built on the
+   assumption item 1 passes (Tim); the bench now verifies that path rather than
+   deciding whether to write it. Buy the second body only on a clean pass.
 
 **Historical import is cancelled, not pending** (Tim, 2026-07-30): there is no
 build on the phone, so `fairway.db` would be empty. The hub's own history is
@@ -205,20 +266,20 @@ the only history. Nothing is waiting on that file — do not re-add it.
 
 ## Next build steps (in order)
 
-1. Phase 2 capture clients — both talk to the seam above, so they are
-   independent of each other:
-   - **RN capture app**: ring-buffer spike first (chunked HEVC segments vs
-     native AVAssetWriter), live per-shot clips only, no batch. The spike is
-     the gate and needs a device — its outcome does not change the hub
-     contract, only what fulfils it.
-   - **GoPro driver**: a Node client inside the hub polling `/api/clips/pending`
-     — arm Hindsight, trigger, download over USB, trim end-relative, upload.
-     Blocked only on the GOPRO_CAPTURE.md bench, not on the RN spike.
-2. Clip playback in the UI — a shot row that has clips offers them; `<video>`
-   against `/api/clips/<id>/file` already scrubs.
-3. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics, reading
-   clips off the seam and writing impact offsets back through
-   `setClipImpactOffset`.
+1. **Phase 3: the pose worker** — Python (`uv`, FastAPI, MediaPipe) + §5.4
+   metrics, reading clips off the seam and writing impact offsets back through
+   `setClipImpactOffset`. This is now the front of the queue: the GoPro path
+   produces clips, and nothing yet reads one. The impact-audio pass that earns
+   a clip `sync: 'fine'` belongs here too — every GoPro clip is `coarse` by
+   construction, and it is the only thing that can change that.
+2. **RN capture app** — ring-buffer spike first (chunked HEVC segments vs
+   native AVAssetWriter), live per-shot clips only, no batch. The spike is the
+   gate and needs a device; its outcome does not change the hub contract, only
+   what fulfils it. Nothing else waits on this — the GoPro is a complete
+   second view on its own.
+3. **Second GoPro body** for the two-view station, on a clean bench. The driver
+   is already per-view: two entries in `HUB_CAMERAS` with two addresses start
+   two of them, each answering only its own requests.
 
 ## Decisions log (with rationale, chronological)
 
@@ -249,6 +310,13 @@ the only history. Nothing is waiting on that file — do not re-add it.
   camera for a *known* shot's pre-roll, so the only thing genuinely unknown at
   write time is where impact sits in the file. Clip bytes are not a `@golf/*`
   concern: the seam is hub-edge, same as the BLE, monitor and MCP transports.
+- **Assume the HERO 12 does Hindsight at 1080p120** (Tim, 2026-07-30) — the
+  driver was built on that assumption rather than waiting on the bench. The
+  frame rate is the only thing item 1 can kill; the loop is rate-agnostic.
+- **The GoPro driver measures from the end of the file, never the start**
+  (see above). Keyframe snapping and a part-full buffer both move the start and
+  neither moves the end, so anchoring there is what makes the impact offset
+  survive not knowing where the cut landed.
 - **Coach = Managed Agents** in `@golf/coach` + hub edge client; recaps
   reuse `AnalysisVerdict`/`analyses` so the phone renders them unchanged.
 - **MCP server is read-only and hand-framed** (see above). Tools live in
@@ -266,8 +334,16 @@ the only history. Nothing is waiting on that file — do not re-add it.
 
 - Hub handedness is a constant (`right`) in `apps/hub/src/main.ts` —
   settings surface pending.
+- **Every GoPro number is unverified against a real body.** The pre-roll (5 s),
+  the forward hold (3.5 s) and the staleness margin (1.5 s) are reasoned, not
+  measured; the encode budget (30 s) and the buffer-refill assumption come from
+  GOPRO_CAPTURE.md's cadence math, which is thin at fast shot spacing. Bench
+  item 3 is what tunes them.
+- The camera's card is never cleared by the hub — it keeps the untrimmed
+  originals (~120 MB a shot). Clear it between range trips or Hindsight runs
+  out of room to save into.
 - No CI. `yarn nx run-many -t test,typecheck,lint` is the manual gate
-  (17 projects, 612 tests — re-run green as of this commit).
+  (17 projects, 644 tests — re-run green as of this commit).
 - Nx cannot build a project graph while sibling git worktrees are checked
   out: each one holds a second copy of every `libs/*` project.json and the
   duplicate names fail the whole graph. `.nxignore` excludes

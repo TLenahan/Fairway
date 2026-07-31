@@ -14,6 +14,10 @@ import {
 } from '@golf/types';
 
 import { createClipStore } from './capture/clip-store';
+import { createHttpClipSeam } from './capture/client';
+import { createHttpCamera } from './capture/gopro/camera';
+import { GoProDriver, createGoProDriver } from './capture/gopro/driver';
+import { createFfmpegTrimmer } from './capture/gopro/trim';
 import { createCaptureRegistry } from './capture/requests';
 import { runDailyCoachRecap } from './coach/recap-runner';
 import { createRecapTracker } from './recap-endpoint';
@@ -36,20 +40,36 @@ const ENVIRONMENT: Environment = {
   presetName: null,
 };
 
+interface CameraConfig {
+  source: ClipSource;
+  view: ClipView;
+  /** Where to reach it, for a camera the hub drives itself. */
+  address: string | null;
+}
+
 /**
- * Cameras the hub should ask for footage, as `source:view` pairs —
- * `HUB_CAMERAS=phone:face_on,gopro:down_the_line`. Unset means no cameras, and
- * therefore no capture requests: a hub with nothing pointed at the hitting bay
- * should not spend every shot asking an empty room for a clip.
+ * Cameras the hub should ask for footage, as `source:view` pairs with an
+ * optional address —
+ * `HUB_CAMERAS=phone:face_on,gopro:down_the_line@172.24.106.51`. Unset means no
+ * cameras, and therefore no capture requests: a hub with nothing pointed at the
+ * hitting bay should not spend every shot asking an empty room for a clip.
+ *
+ * The address is what splits the two kinds of camera apart. A phone finds the
+ * hub itself and needs none. A GoPro cannot be told anything, so the hub runs
+ * the client for it — and that client needs to know which body to talk to. It
+ * rides here rather than in a second variable so there is still exactly one
+ * list of what is pointed at the bay.
  */
-function configuredCameras(): { source: ClipSource; view: ClipView }[] {
+function configuredCameras(): CameraConfig[] {
   const raw = process.env.HUB_CAMERAS?.trim();
   if (!raw) return [];
   return raw.split(',').map((entry) => {
-    const [source, view] = entry.trim().split(':');
+    const [pair, address] = entry.trim().split('@');
+    const [source, view] = pair.split(':');
     return {
       source: ClipSourceSchema.parse(source),
       view: ClipViewSchema.parse(view),
+      address: address ?? null,
     };
   });
 }
@@ -100,8 +120,19 @@ async function main(): Promise<void> {
     console.log('[capture] no cameras — set HUB_CAMERAS=phone:down_the_line');
   } else {
     console.log(
-      `[capture] ${cameras.map((c) => `${c.source}:${c.view}`).join(', ')}`,
+      `[capture] ${cameras
+        .map((c) => `${c.source}:${c.view}${c.address ? `@${c.address}` : ''}`)
+        .join(', ')}`,
     );
+  }
+  for (const camera of cameras) {
+    if (camera.source === 'gopro' && !camera.address) {
+      console.log(
+        `[capture] gopro:${camera.view} has no address — the hub will ask for ` +
+          'its clips but nothing here will drive it ' +
+          `(HUB_CAMERAS=gopro:${camera.view}@172.24.106.51)`,
+      );
+    }
   }
 
   store.subscribe((state, prev) => {
@@ -181,12 +212,39 @@ async function main(): Promise<void> {
     ...(onSessionEnd ? { onSessionEnd } : {}),
   });
 
+  // The GoPro cannot be reached by the hub, so the hub runs its client: it
+  // polls the same /api/clips endpoints a phone would, arms Hindsight, and
+  // answers each request with the pre-roll around that shot. Started after the
+  // server is listening, because that is what it talks to.
+  const goproDrivers: GoProDriver[] = [];
+  for (const camera of cameras) {
+    if (camera.source !== 'gopro' || !camera.address) continue;
+    const driver = createGoProDriver({
+      camera: createHttpCamera(camera.address),
+      seam: createHttpClipSeam(`http://127.0.0.1:${UI_PORT}`),
+      trimmer: createFfmpegTrimmer(),
+      view: camera.view,
+      // One per body: a driver clears its scratch dir on the way up, and two
+      // sharing one would clear each other's work in flight.
+      workDir: join(dataDir, 'gopro-work', camera.view),
+    });
+    try {
+      await driver.start();
+      goproDrivers.push(driver);
+    } catch (err) {
+      // Only the missing-ffmpeg case gets here; an unreachable camera is
+      // something the driver keeps working on by itself.
+      console.error(`[gopro:${camera.view}] disabled — ${(err as Error).message}`);
+    }
+  }
+
   store.getState().startDiscovery();
   store.getState().startWristScan();
   console.log(`[hub] running — session UI at http://localhost:${UI_PORT}`);
 
   process.on('SIGINT', () => {
     console.log('\n[hub] shutting down');
+    for (const driver of goproDrivers) driver.stop();
     monitor.disconnect();
     wrist?.disconnect();
     process.exit(0);

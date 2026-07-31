@@ -12,7 +12,7 @@ import type {
   InsightsWire,
 } from '@golf/insights';
 import type { TrainingBlockWire } from '@golf/program';
-import { ShotIntent } from '@golf/types';
+import { Clip, ClipView, ShotIntent } from '@golf/types';
 
 import {
   HubCommand,
@@ -31,6 +31,12 @@ const MS_TO_MPH = 2.23694;
 const M_TO_YD = 1.09361;
 const MAX_FINDINGS = 8;
 const RECAP_POLL_MS = 5000;
+const CLIP_POLL_MS = 4000;
+
+const VIEW_LABEL: Record<ClipView, string> = {
+  down_the_line: 'DTL',
+  face_on: 'FO',
+};
 
 function useHub(): {
   snapshot: HubSnapshot | null;
@@ -102,6 +108,99 @@ function useInsights(snapshot: HubSnapshot | null): HubInsightsPayload | null {
   }, [live]);
 
   return insights;
+}
+
+/**
+ * The session's clips, by shot.
+ *
+ * Polled rather than pushed, and the reason is the shape of capture itself: a
+ * clip lands seconds AFTER its shot — the camera has to finish encoding, the
+ * hub has to pull it over USB and trim it — and none of that touches the store,
+ * so no snapshot goes out when one arrives. The poll runs only while a session
+ * is live; once it has ended, what is there is all there will be.
+ */
+function useClips(snapshot: HubSnapshot | null): Map<string, Clip[]> {
+  const [clips, setClips] = useState<Clip[]>([]);
+  const sessionId = snapshot?.session?.id ?? null;
+  const live = snapshot?.session != null && snapshot.session.endedAt === null;
+
+  useEffect(() => {
+    if (!sessionId) {
+      setClips([]);
+      return;
+    }
+    let disposed = false;
+    const load = (): Promise<void> =>
+      fetch(`/api/clips?sessionId=${sessionId}`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((body: { clips: Clip[] } | null) => {
+          if (!disposed && body) setClips(body.clips);
+        })
+        .catch(() => undefined);
+    void load();
+    if (!live) {
+      return () => {
+        disposed = true;
+      };
+    }
+    const timer = window.setInterval(() => void load(), CLIP_POLL_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [sessionId, live]);
+
+  const byShot = new Map<string, Clip[]>();
+  for (const clip of clips) {
+    byShot.set(clip.shotId, [...(byShot.get(clip.shotId) ?? []), clip]);
+  }
+  return byShot;
+}
+
+function ClipPlayer({
+  clip,
+  onClose,
+}: {
+  clip: Clip;
+  onClose(): void;
+}): React.JSX.Element {
+  // Open at impact, not at the top. The run-up is context; the strike is the
+  // thing being looked at, and `#t=` is honoured by the video element.
+  const start =
+    clip.impactOffsetMs === null
+      ? ''
+      : `#t=${(clip.impactOffsetMs / 1000).toFixed(2)}`;
+  return (
+    <div className="panel">
+      <div className="row">
+        <strong>
+          {VIEW_LABEL[clip.view]} · {clip.source}
+        </strong>
+        <span className="dim">
+          {(clip.durationMs / 1000).toFixed(1)}s @ {clip.fps}fps ·{' '}
+          {clip.width}×{clip.height}
+        </span>
+        <span className="dim">
+          {/* Said out loud because it is the difference between "the pose
+              metrics are measured from the right frame" and "roughly". */}
+          impact{' '}
+          {clip.impactOffsetMs === null
+            ? 'not located'
+            : `${(clip.impactOffsetMs / 1000).toFixed(2)}s (${clip.sync})`}
+        </span>
+        <button onClick={onClose}>Close</button>
+      </div>
+      {/* Keyed on the clip so switching shots reloads the element rather than
+          seeking the old one. Range requests are what make this scrub. */}
+      <video
+        key={clip.id}
+        src={`/api/clips/${clip.id}/file${start}`}
+        controls
+        preload="metadata"
+        style={{ width: '100%', maxHeight: 420, background: '#000' }}
+      />
+    </div>
+  );
 }
 
 /**
@@ -729,9 +828,13 @@ function App(): React.JSX.Element {
   const { snapshot, connected, send } = useHub();
   const insights = useInsights(snapshot);
   const recaps = useRecaps(snapshot);
+  const clipsByShot = useClips(snapshot);
+  const [openClipId, setOpenClipId] = useState<string | null>(null);
   if (!snapshot) {
     return <div className="panel dim">Connecting to hub…</div>;
   }
+  const openClip =
+    [...clipsByShot.values()].flat().find((c) => c.id === openClipId) ?? null;
   const s = snapshot;
   const inSession = s.session !== null && s.session.endedAt === null;
 
@@ -833,6 +936,7 @@ function App(): React.JSX.Element {
                 <th>Side yd</th>
                 <th>Curve yd</th>
                 <th>Wrist</th>
+                <th>Clip</th>
               </tr>
             </thead>
             <tbody>
@@ -849,12 +953,32 @@ function App(): React.JSX.Element {
                   <td>{fmt(shot.offlineM, M_TO_YD)}</td>
                   <td>{fmt(shot.curveM, M_TO_YD)}</td>
                   <td>{shot.hasWrist ? '✓' : ''}</td>
+                  <td>
+                    {/* One button per view — the two-view station puts two
+                        clips on the same swing, and they are not
+                        interchangeable. Empty means no camera answered. */}
+                    {(clipsByShot.get(shot.id) ?? []).map((clip) => (
+                      <button
+                        key={clip.id}
+                        className={clip.id === openClipId ? 'active' : ''}
+                        onClick={() =>
+                          setOpenClipId(clip.id === openClipId ? null : clip.id)
+                        }
+                      >
+                        {VIEW_LABEL[clip.view]}
+                      </button>
+                    ))}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {openClip && (
+        <ClipPlayer clip={openClip} onClose={() => setOpenClipId(null)} />
+      )}
 
       {insights && <Insights wire={insights} />}
       {insights && insights.blocks.length > 0 && (

@@ -1,147 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer, Server } from 'node:http';
-import { tmpdir } from 'node:os';
-import { AddressInfo } from 'node:net';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createDataStore, runMigrations } from '@golf/data';
-import { openNodeDatabase } from '@golf/data/node';
-import {
-  Clip,
-  DataStore,
-  Environment,
-  MeasuredShot,
-  ShotRecord,
-} from '@golf/types';
+import { Clip } from '@golf/types';
 
-import { createClipStore } from './clip-store';
-import {
-  CaptureEndpointDeps,
-  MAX_CLIP_BYTES,
-  handleCaptureRequest,
-  parseRange,
-} from './endpoint';
-import { createCaptureRegistry } from './requests';
-
-const ENVIRONMENT: Environment = {
-  altitudeM: 1800,
-  temperatureC: 22,
-  presetName: null,
-};
-
-const measured = (guid: string): MeasuredShot => ({
-  shotGuid: guid,
-  handedness: 'right',
-  impactTimestamp: 1783975921445500,
-  ball: {
-    speedMs: 60.1,
-    launchAngleDeg: 15.2,
-    launchDirectionDeg: -1.1,
-    backspinRpm: 6100,
-    sidespinRpm: 300,
-    rollspinRpm: 100,
-    spinAssurance: 97,
-  },
-  club: {
-    speedMs: 44.2,
-    pathDeg: -1.0,
-    faceAngleDeg: null,
-    attackAngleDeg: -2.5,
-    loftDeg: null,
-    lieDeg: null,
-    faceImpactHMm: null,
-    faceImpactVMm: null,
-  },
-  assurance: {
-    spin: 97,
-    clubSpeed: 95,
-    clubPath: 95,
-    faceAngle: 0,
-    attackAngle: 95,
-    loftAngle: 0,
-    lieAngle: 0,
-    faceImpactLateral: 0,
-    faceImpactVertical: 0,
-  },
-  smashFactor: 1.36,
-  shotImgPath: null,
-});
-
-interface Harness {
-  deps: CaptureEndpointDeps;
-  data: DataStore;
-  shot: ShotRecord;
-  sessionId: string;
-  clipsDir: string;
-  base: string;
-  server: Server;
-  close(): Promise<void>;
-}
-
-async function build(): Promise<Harness> {
-  const root = mkdtempSync(join(tmpdir(), 'fairway-clips-'));
-  const clipsDir = join(root, 'clips');
-  const db = openNodeDatabase();
-  await runMigrations(db);
-  const data = createDataStore(db);
-  const club = await data.createClub({
-    name: '7 Iron',
-    category: 'iron',
-    swingTag: 'full',
-    loftDeg: 34,
-    notes: null,
-    tracerColor: null,
-    focusNote: null,
-    archived: false,
-  });
-  const session = await data.createSession({
-    name: null,
-    notes: null,
-    startedAt: 1,
-    environment: ENVIRONMENT,
-  });
-  const shot = await data.insertShot(session.id, club.id, measured('g-1'), null);
-
-  const deps: CaptureEndpointDeps = {
-    data,
-    clips: createClipStore(clipsDir),
-    registry: createCaptureRegistry(),
-  };
-
-  const server = createServer((req, res) => {
-    void (async () => {
-      const url = new URL(req.url ?? '/', 'http://localhost');
-      try {
-        if (await handleCaptureRequest(deps, req, res, url)) return;
-      } catch (err) {
-        res
-          .writeHead(500, { 'content-type': 'application/json' })
-          .end(JSON.stringify({ error: (err as Error).message }));
-        return;
-      }
-      res.writeHead(404).end();
-    })();
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as AddressInfo;
-
-  return {
-    deps,
-    data,
-    shot,
-    sessionId: session.id,
-    clipsDir,
-    base: `http://127.0.0.1:${port}`,
-    server,
-    async close() {
-      await new Promise<void>((resolve, reject) =>
-        server.close((err) => (err ? reject(err) : resolve())),
-      );
-      db.close();
-      rmSync(root, { recursive: true, force: true });
-    },
-  };
-}
+import { MAX_CLIP_BYTES, parseRange } from './endpoint';
+import { CaptureHarness, buildCaptureHarness } from './testing';
 
 const upload = (
   base: string,
@@ -156,9 +19,9 @@ const upload = (
   );
 
 describe('capture endpoints', () => {
-  let h: Harness;
+  let h: CaptureHarness;
   beforeEach(async () => {
-    h = await build();
+    h = await buildCaptureHarness();
   });
   afterEach(async () => {
     await h.close();

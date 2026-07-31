@@ -1,5 +1,13 @@
 # GoPro as a live per-shot clip source — feasibility verdict (2026-07-30)
 
+> **Build decision (Tim, 2026-07-30): assume the HERO 12 Black does Hindsight at
+> 1080p120.** The driver described below is now built (`apps/hub/src/capture/gopro`,
+> see INSIGHTS_STATUS.md). That changes what the bench is for, not what it
+> checks: items 1-5 stay exactly as written, but they now verify a path that
+> exists rather than deciding whether to write it. If item 1 fails, what dies is
+> the frame rate, not the driver — the same loop runs at whatever rate Hindsight
+> does support.
+
 Research verdict from the official Open GoPro specs (HERO10 is governed by the
 versioned **Open GoPro 2.0** spec; the current docs site's "supported cameras"
 badges only cover newer bodies — do not be misled by their absence).
@@ -51,6 +59,11 @@ vs ~6s needed. Margin exists but is thin at fast shot spacing; buffer refill
 rate after a save is undocumented (bench item).
 
 ## Bench test (30 min, priority order, on the first purchased body)
+
+Run these with `tools/gopro-bench.mjs`, which drives the camera directly. Then
+run the hub itself (`HUB_CAMERAS=gopro:down_the_line@<cam-ip>`) for the same
+cycle end to end — the bench proves the camera, the hub proves the loop.
+
 
 1. **Hindsight × 1080p120/240** — arm via API, capture, verify fps in the
    container, clean playback with audio. Go/no-go.
