@@ -86,6 +86,12 @@ skips covered findings; evaluation only resolves closed windows) — the
 integration test asserts a second run prescribes nothing. Blocks appear
 in the UI's Training panel.
 
+**Coach recap in the UI**: `GET /api/recaps` + a Coach panel under the
+Session controls — headline, prose, issues/strengths/drills/caveats, with a
+live "writing today's recap…" state that polls until it lands (a coach run
+outlives the request that starts it) and a visible error state. Drill ids
+resolve to display names server-side.
+
 **Replay harness**: `apps/hub/src/services.spec.ts` drives the whole loop
 headless (real monitor decode on fake TCP/UDP via `@golf/monitor/testing`,
 real wrist service replaying `captures/*.ndjson`, real SQLite). All hub
@@ -147,7 +153,6 @@ logic is developed against it.
 
 - Hub handedness is a constant (`right`) in `apps/hub/src/main.ts` —
   settings surface pending.
-- Coach recap not yet shown in the hub UI (persisted to DB only).
 - No CI. `yarn nx run-many -t test,typecheck,lint` is the manual gate
   (16 projects, 554 tests, green as of this commit).
 - Main-checkout `node_modules` needs `yarn install` after this merge (new
