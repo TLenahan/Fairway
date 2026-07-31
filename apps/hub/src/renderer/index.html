@@ -55,6 +55,7 @@
       h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); font-weight: 500; margin: 14px 0 6px; }
       .good { color: var(--green); }
       .warn { color: var(--amber); }
+      .bad { color: var(--red); }
       ul.findings { list-style: none; margin: 0; padding: 0; }
       ul.findings li { padding: 5px 0; border-bottom: 1px solid var(--border); }
       ul.findings li:last-child { border-bottom: none; }
@@ -66,6 +67,17 @@
       ul.blocks li.resolved { opacity: 0.62; }
       /* protocol is available, not shouting */
       .protocol { margin-top: 2px; font-size: 13px; }
+      /* the coach's own one-line answer leads the panel */
+      .recap-headline { font-size: 16px; line-height: 1.35; margin-bottom: 8px; }
+      /* pre-line keeps the single newlines the coach uses inside a paragraph;
+         blank-line breaks are already separate <p> elements */
+      .recap-prose p { margin: 0 0 9px; white-space: pre-line; }
+      .recap-prose p:last-child { margin-bottom: 0; }
+      ul.recap { list-style: none; margin: 0; padding: 0; }
+      ul.recap li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+      ul.recap li:last-child { border-bottom: none; }
+      .severity { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+      .recap-footer { margin-top: 12px; font-size: 13px; }
     </style>
   </head>
   <body>

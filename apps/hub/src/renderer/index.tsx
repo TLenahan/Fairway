@@ -14,7 +14,13 @@ import type {
 import type { TrainingBlockWire } from '@golf/program';
 import { ShotIntent } from '@golf/types';
 
-import { HubCommand, HubSnapshot, SnapshotMessage } from '../shared/protocol';
+import {
+  HubCommand,
+  HubSnapshot,
+  RecapsPayload,
+  RecapWire,
+  SnapshotMessage,
+} from '../shared/protocol';
 
 /**
  * What `GET /api/insights` returns: the engine wire plus the training blocks
@@ -36,6 +42,7 @@ const INTENTS: ShotIntent[] = ['stock', 'draw', 'fade'];
 const MS_TO_MPH = 2.23694;
 const M_TO_YD = 1.09361;
 const MAX_FINDINGS = 8;
+const RECAP_POLL_MS = 5000;
 
 function useHub(): {
   snapshot: HubSnapshot | null;
@@ -107,6 +114,68 @@ function useInsights(snapshot: HubSnapshot | null): HubInsightsPayload | null {
   }, [live]);
 
   return insights;
+}
+
+/**
+ * Shared by the falling-edge fetch and the poll. A failed request resolves to
+ * null rather than throwing, so one bad poll leaves the panel showing the
+ * recap it already had instead of blanking it.
+ */
+async function fetchRecaps(): Promise<RecapsPayload | null> {
+  try {
+    const response = await fetch('/api/recaps');
+    if (!response.ok) return null;
+    const wire: RecapsPayload = await response.json();
+    return wire;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The coach writes a recap when a session closes, so this fetches on the same
+ * falling edge `useInsights` uses. The difference is what happens next: a
+ * coach run is a managed-agent session that takes minutes, so while the server
+ * reports `running` this polls until it isn't — the recap arrives in the panel
+ * on its own rather than on a manual refresh. The interval lives only for the
+ * duration of that `running` window.
+ */
+function useRecaps(snapshot: HubSnapshot | null): RecapsPayload | null {
+  const [recaps, setRecaps] = useState<RecapsPayload | null>(null);
+  const fetched = useRef(false);
+  const live = snapshot?.session != null && snapshot.session.endedAt === null;
+  const running = recaps?.status === 'running';
+
+  useEffect(() => {
+    if (live && fetched.current) return;
+    fetched.current = true;
+    let disposed = false;
+    void fetchRecaps().then((wire) => {
+      if (!disposed && wire) setRecaps(wire);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [live]);
+
+  // Leaving `running` re-runs this effect, which is what stops the poll —
+  // there is no other exit, so the interval can never outlive the run (or the
+  // component).
+  useEffect(() => {
+    if (!running) return;
+    let disposed = false;
+    const timer = window.setInterval(() => {
+      void fetchRecaps().then((wire) => {
+        if (!disposed && wire) setRecaps(wire);
+      });
+    }, RECAP_POLL_MS);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [running]);
+
+  return recaps;
 }
 
 /** Engine keys are never shown raw — these maps are the whole UI vocabulary. */
@@ -254,7 +323,10 @@ function Dot({ state }: { state: string }): React.JSX.Element {
   const color =
     state === 'connected'
       ? 'var(--green)'
-      : state === 'connecting' || state === 'discovering' || state === 'scanning'
+      : state === 'connecting' ||
+          state === 'discovering' ||
+          state === 'scanning' ||
+          state === 'running'
         ? 'var(--amber)'
         : 'var(--dim)';
   return <span className="dot" style={{ background: color }} />;
@@ -507,9 +579,168 @@ function Training({
   );
 }
 
+type RecapIssue = RecapWire['verdict']['issues'][number];
+
+const SEVERITY_CLASS: Record<RecapIssue['severity'], string> = {
+  high: 'bad',
+  medium: 'warn',
+  low: 'dim',
+};
+
+/**
+ * The coach writes prose, not a blob: blank lines are paragraph breaks and are
+ * rendered as such. Single newlines inside a paragraph are left in the text and
+ * survive via `white-space: pre-line`, because the coach uses them for lists
+ * and this has no business guessing which ones were meant to be structural.
+ */
+function paragraphs(narrative: string): string[] {
+  return narrative
+    .split(/\n[ \t]*\n/)
+    .map((block) => block.trim())
+    .filter((block) => block !== '');
+}
+
+const recapDate = (ms: number): string =>
+  new Date(ms).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+
+/**
+ * One recap, verdict first. The headline leads because it is the coach's own
+ * one-line answer; the prose is the argument for it. Empty verdict sections are
+ * dropped rather than shown as bare headings — a recap with no drills should
+ * read as a recap with no drills, not as a broken panel.
+ */
+function Recap({ recap, earlier }: { recap: RecapWire; earlier: number }): React.JSX.Element {
+  const { verdict } = recap;
+  return (
+    <>
+      <div className="recap-headline">{verdict.headline}</div>
+
+      <div className="recap-prose">
+        {paragraphs(recap.narrative).map((block, index) => (
+          <p key={index}>{block}</p>
+        ))}
+      </div>
+
+      {verdict.issues.length > 0 && (
+        <>
+          <h3>Issues</h3>
+          <ul className="recap">
+            {verdict.issues.map((issue, index) => (
+              <li key={index}>
+                <div className="row" style={{ gap: 8 }}>
+                  <span className={`severity ${SEVERITY_CLASS[issue.severity]}`}>
+                    {issue.severity}
+                  </span>
+                  <span className="who">{issue.area}</span>
+                </div>
+                <div>{issue.why}</div>
+                <div className="dim">{issue.evidence}</div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {verdict.strengths.length > 0 && (
+        <>
+          <h3>Strengths</h3>
+          <ul className="recap">
+            {verdict.strengths.map((strength, index) => (
+              <li key={index}>
+                <span className="good">{strength.area}</span>
+                <div className="dim">{strength.evidence}</div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {verdict.drills.length > 0 && (
+        <>
+          <h3>Drills</h3>
+          <ul className="recap">
+            {verdict.drills.map((drill, index) => (
+              <li key={index}>
+                <span className="who">
+                  {recap.drill_names[drill.name] ?? drill.name}
+                </span>{' '}
+                — {drill.goal}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {verdict.caveats.length > 0 && (
+        <>
+          <h3>Caveats</h3>
+          <ul className="recap">
+            {verdict.caveats.map((caveat, index) => (
+              <li key={index} className="dim">
+                {caveat}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <div className="recap-footer dim">
+        <div>
+          Session {recapDate(recap.session_started_at_ms)} · written by {recap.model}
+        </div>
+        {earlier > 0 && (
+          <div>
+            +{earlier} earlier recap{earlier === 1 ? '' : 's'}
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/**
+ * The day's payoff, so it sits directly under Session rather than below the
+ * tables. Only the latest recap is shown — earlier ones are a count, not a
+ * browser; the point of the panel is "what did the coach say about today".
+ */
+function Coach({ payload }: { payload: RecapsPayload }): React.JSX.Element {
+  // Newest first regardless of how the endpoint happened to order them, so
+  // "latest" is decided here rather than assumed off the wire.
+  const ordered = [...payload.recaps].sort((a, b) => b.created_at_ms - a.created_at_ms);
+  const latest = ordered[0];
+
+  return (
+    <div className="panel">
+      <h2>Coach</h2>
+      {payload.status === 'running' ? (
+        <span className="row" style={{ gap: 6 }}>
+          <Dot state="running" /> Writing today&rsquo;s recap…
+        </span>
+      ) : payload.status === 'error' ? (
+        <div className="bad">
+          The recap failed to generate — your session and shots are saved, only the
+          write-up is missing.
+          {payload.error !== null && <div className="dim">{payload.error}</div>}
+        </div>
+      ) : latest === undefined ? (
+        <span className="dim">
+          No recap yet — end a session with an API key configured.
+        </span>
+      ) : (
+        <Recap recap={latest} earlier={ordered.length - 1} />
+      )}
+    </div>
+  );
+}
+
 function App(): React.JSX.Element {
   const { snapshot, connected, send } = useHub();
   const insights = useInsights(snapshot);
+  const recaps = useRecaps(snapshot);
   if (!snapshot) {
     return <div className="panel dim">Connecting to hub…</div>;
   }
@@ -594,6 +825,8 @@ function App(): React.JSX.Element {
         </div>
         <ClubPicker snapshot={s} send={send} />
       </div>
+
+      {recaps && <Coach payload={recaps} />}
 
       <div className="panel">
         <h2>Shots</h2>

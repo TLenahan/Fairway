@@ -8,6 +8,7 @@ import { openNodeDatabase } from '@golf/data/node';
 import { Environment } from '@golf/types';
 
 import { runDailyCoachRecap } from './coach/recap-runner';
+import { createRecapTracker } from './recap-endpoint';
 import { startHubServer } from './server';
 import { createHubServices } from './services';
 import { createNodeTcpFactory } from './transports/tcp';
@@ -83,6 +84,10 @@ async function main(): Promise<void> {
         return null;
       }
     })();
+  // A coach run outlives the request that triggered it, so the UI learns about
+  // it here rather than from a response: the tracker is what /api/recaps reads
+  // to say "one is being written" or "the last one failed".
+  const recapTracker = createRecapTracker();
   let onSessionEnd: ((sessionId: string) => void) | undefined;
   if (apiKey) {
     const coach = {
@@ -93,9 +98,16 @@ async function main(): Promise<void> {
     };
     onSessionEnd = (sessionId) => {
       console.log('[coach] building daily recap…');
+      recapTracker.begin(sessionId);
       runDailyCoachRecap(coach, sessionId)
-        .then(() => console.log('[coach] recap saved'))
-        .catch((err: Error) => console.error('[coach]', err.message));
+        .then(() => {
+          recapTracker.succeed();
+          console.log('[coach] recap saved');
+        })
+        .catch((err: Error) => {
+          recapTracker.fail(err.message);
+          console.error('[coach]', err.message);
+        });
     };
   } else {
     console.log(
@@ -109,6 +121,7 @@ async function main(): Promise<void> {
     environment: ENVIRONMENT,
     uiDir,
     port: UI_PORT,
+    recapTracker,
     ...(onSessionEnd ? { onSessionEnd } : {}),
   });
 

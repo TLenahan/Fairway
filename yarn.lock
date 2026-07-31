@@ -2658,6 +2658,7 @@ __metadata:
     "@golf/flight-model": "workspace:*"
     "@golf/insights": "workspace:*"
     "@golf/monitor": "workspace:*"
+    "@golf/program": "workspace:*"
     "@golf/store": "workspace:*"
     "@golf/types": "workspace:*"
     "@golf/wrist": "workspace:*"

@@ -6,8 +6,9 @@ import { Environment, WristDevice } from '@golf/types';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import { runProgramLoop } from './program-runner';
+import { RecapTracker, loadRecaps } from './recap-endpoint';
 import { HubServices } from './services';
-import { HubCommand, SnapshotMessage } from './shared/protocol';
+import { HubCommand, RecapsPayload, SnapshotMessage } from './shared/protocol';
 import { buildSnapshot } from './snapshot';
 
 /**
@@ -22,6 +23,12 @@ export interface HubServerConfig {
   port: number;
   /** fires after a session ends — the daily coach-recap hook */
   onSessionEnd?(sessionId: string): void;
+  /**
+   * State of the in-flight coach recap, owned by whoever drives
+   * `onSessionEnd`. Optional so tests can stand the server up without a coach;
+   * absent reports 'idle'.
+   */
+  recapTracker?: RecapTracker;
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -31,6 +38,8 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 const INSIGHTS_PATH = '/api/insights';
+const RECAPS_PATH = '/api/recaps';
+const RECAP_LIMIT = 5;
 
 export async function startHubServer(
   config: HubServerConfig,
@@ -64,6 +73,29 @@ export async function startHubServer(
       if (path === INSIGHTS_PATH) {
         try {
           const { payload } = await runProgramLoop(services.data, Date.now());
+          res
+            .writeHead(200, { 'content-type': 'application/json' })
+            .end(JSON.stringify(payload));
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          res
+            .writeHead(500, { 'content-type': 'application/json' })
+            .end(JSON.stringify({ error }));
+        }
+        return;
+      }
+
+      // Stored recaps plus the state of the run in flight, in one response:
+      // a UI that fetched them separately could show an empty list while the
+      // coach was mid-run and call it "no recap".
+      if (path === RECAPS_PATH) {
+        try {
+          const tracked = config.recapTracker?.snapshot();
+          const payload: RecapsPayload = {
+            status: tracked?.status ?? 'idle',
+            error: tracked?.error ?? null,
+            recaps: await loadRecaps(services.data, RECAP_LIMIT),
+          };
           res
             .writeHead(200, { 'content-type': 'application/json' })
             .end(JSON.stringify(payload));

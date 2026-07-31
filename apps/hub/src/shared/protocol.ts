@@ -6,6 +6,7 @@
 import type { InsightsWire } from '@golf/insights';
 import type { TrainingBlockWire } from '@golf/program';
 import {
+  AnalysisVerdict,
   Club,
   DiscoveredDevice,
   Environment,
@@ -32,6 +33,38 @@ import {
  */
 export interface HubInsightsPayload extends InsightsWire {
   blocks: TrainingBlockWire[];
+}
+
+/** One stored coach recap, flattened for the UI. */
+export interface RecapWire {
+  session_id: string;
+  session_started_at_ms: number;
+  created_at_ms: number;
+  model: string;
+  narrative: string;
+  verdict: AnalysisVerdict;
+  /**
+   * Drill id → display name, for the ids the verdict references. The coach
+   * names drills by id (that is what links a recap to the re-measure loop),
+   * but an id is not what a person should read over breakfast — and the
+   * renderer cannot resolve it itself without bundling the drill library.
+   */
+  drill_names: Record<string, string>;
+}
+
+/**
+ * What `GET /api/recaps` returns.
+ *
+ * `status` describes the recap generation happening RIGHT NOW, not the stored
+ * ones: a coach run is a managed-agent session that takes minutes, so an empty
+ * `recaps` after a session ends is ambiguous on its own. The status resolves
+ * it — 'running' means one is being written, 'error' (with `error`) means the
+ * run failed and no recap is coming. Silence would read as "nothing happened".
+ */
+export interface RecapsPayload {
+  status: 'idle' | 'running' | 'error';
+  error: string | null;
+  recaps: RecapWire[];
 }
 
 /** One shot row trimmed for the UI — no trajectory samples over the wire. */
