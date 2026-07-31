@@ -12,7 +12,7 @@ feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 |---|---|
 | 0 — Audit + core extraction | **Done.** The `@golf/*` lib layer already was the extraction; audit + reuse matrix in INSIGHTS_AUDIT.md |
 | 1 — Mac hub MVP | **Code-complete.** Awaiting the first live-hardware run |
-| 2 — Capture clients + clips | Not started. **No batch mode (Tim).** Ring-buffer spike is the mandatory first task; GoPro HERO 12 may join per GOPRO_CAPTURE.md bench |
+| 2 — Capture clients + clips | **Hub side done** (clip seam: schema, ingest, playback). Capture clients not started — the ring-buffer spike is still the gate. **No batch mode (Tim).** A GoPro body may join per the GOPRO_CAPTURE.md bench |
 | 3 — Pose pipeline | Not started (Python/uv worker, MediaPipe) |
 | 4 — Analytics engine | **Done.** `@golf/insights`, 122 tests incl. planted-effect acceptance + negative control |
 | 5 — Insights UI / drills / LLM / MCP | **Done.** Coach narrative layer, findings feed, drill library + prescription loop, and the MCP server are all built and running |
@@ -30,8 +30,8 @@ open apps/hub/dist-app/FairwayHub.app   # UI: http://localhost:4271, log: ~/.fai
 ```
 
 Dev without BLE: `HUB_NO_BLE=1 yarn nx run hub:serve`. `FAIRWAY_DATA_DIR`
-points the hub at a scratch data dir (DB + coach resources) for testing. DB at `~/.fairway/hub.db`
-(same `@golf/data` migrations as the phone, schema v10). The UI has session
+points the hub at a scratch data dir (DB + coach resources + clips) for testing. DB at `~/.fairway/hub.db`
+(same `@golf/data` migrations as the phone, schema v11). The UI has session
 start/end, **focus-club picker**, **intent picker** (stock/draw/fade), live
 shot log with warmup tags and wrist-join markers. EYE MINI auto-connects via
 UDP discovery; HackMotion candidates appear for click-to-connect
@@ -134,6 +134,55 @@ dual-format rather than growing that file. Tool failures come back as results
 with `isError`, not JSON-RPC errors, so the model sees a rejected argument and
 can fix it instead of the client swallowing it.
 
+**Capture seam** (`apps/hub/src/capture`, schema v11 `clips`): the hub side of
+Phase 2 — where a swing clip comes from, where it lands, and how it gets back
+out. No capture client exists yet; this is the contract one will plug into.
+
+The load-bearing idea is that **capture is retrospective**. Both candidate
+sources hold a rolling pre-roll — the phone's ring buffer, the GoPro's
+Hindsight — and are triggered *after* the ball is struck, at monitor time T. So
+the hub already knows which shot it is asking about when it asks. A clip is
+therefore **assigned** to its shot, never joined to it: the hub mints a
+`CaptureRequest` naming the shot, the camera returns bytes quoting that id.
+Contrast the wrist sensor, which streams on its own clock and must be matched
+by nearest-neighbour (±1.5 s in `@golf/store`). The rule that falls out is that
+a clip with no live request is **rejected, not guessed at** — a clip filed
+against the wrong swing is worse than a missing one, because every pose metric
+Phase 3 derives from it would be attributed to a swing that did not produce it.
+
+A camera's whole loop is two calls:
+
+```
+GET  /api/clips/pending                              → live requests
+POST /api/clips?request=<id>&durationMs=&fps=&width=&height=[&impactOffsetMs=]
+GET  /api/clips?shotId=<id> | ?sessionId=<id>        → the UI's read side
+GET  /api/clips/<id>/file                            → Range-capable playback
+```
+
+Polling rather than pushing because the hub cannot reliably reach a camera: a
+phone on the range moves between networks, and the GoPro is driven by a client
+inside the hub process. Both can ask; neither can be told. Requests are
+in-memory and single-use with a 120 s TTL — an unfulfilled ask is not history,
+and two files cannot both be the clip one request asked for.
+
+Two invariants worth not breaking:
+
+- **Ingest never claims `sync: 'fine'`.** Whatever offset a client sends is
+  derived from when it was told to stop, which is the trigger-time estimate by
+  definition. Only a later impact-audio pass earns `fine`, through
+  `setClipImpactOffset` (Phase 0 audit, decision 6). `impactOffsetMs` is
+  nullable because 0 is a real answer — impact on the first frame — and cannot
+  double as "unknown".
+- **Bytes live under the data dir; the row stores a relative path**, so a
+  `FAIRWAY_DATA_DIR` move does not orphan every clip. The read side re-checks
+  that a path stays inside the clips directory: a row is only as trustworthy as
+  whatever wrote it, and serving arbitrary files off the hub's disk is not a
+  risk worth taking on that.
+
+Cameras are configured, not assumed: `HUB_CAMERAS=phone:face_on,gopro:down_the_line`.
+Unset means no cameras and therefore no requests — a hub with nothing pointed at
+the bay should not spend every shot asking an empty room for a clip.
+
 **Replay harness**: `apps/hub/src/services.spec.ts` drives the whole loop
 headless (real monitor decode on fake TCP/UDP via `@golf/monitor/testing`,
 real wrist service replaying `captures/*.ndjson`, real SQLite). All hub
@@ -156,10 +205,20 @@ the only history. Nothing is waiting on that file — do not re-add it.
 
 ## Next build steps (in order)
 
-1. Phase 2: RN capture app — ring-buffer spike first (chunked HEVC
-   segments vs native AVAssetWriter), live per-shot clips only, no batch;
-   GoPro path folds in if the bench passes.
-2. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics.
+1. Phase 2 capture clients — both talk to the seam above, so they are
+   independent of each other:
+   - **RN capture app**: ring-buffer spike first (chunked HEVC segments vs
+     native AVAssetWriter), live per-shot clips only, no batch. The spike is
+     the gate and needs a device — its outcome does not change the hub
+     contract, only what fulfils it.
+   - **GoPro driver**: a Node client inside the hub polling `/api/clips/pending`
+     — arm Hindsight, trigger, download over USB, trim end-relative, upload.
+     Blocked only on the GOPRO_CAPTURE.md bench, not on the RN spike.
+2. Clip playback in the UI — a shot row that has clips offers them; `<video>`
+   against `/api/clips/<id>/file` already scrubs.
+3. Phase 3: Python worker (`uv`, FastAPI, MediaPipe) + §5.4 metrics, reading
+   clips off the seam and writing impact offsets back through
+   `setClipImpactOffset`.
 
 ## Decisions log (with rationale, chronological)
 
@@ -184,6 +243,12 @@ the only history. Nothing is waiting on that file — do not re-add it.
   `@golf/monitor` Node-pure; its in-memory fakes are the shared replay
   harness (`@golf/monitor/testing`).
 - **No batch capture mode** (Tim) — live per-shot clips only.
+- **Schema v11 `clips`; a clip is assigned to its shot, never joined to it**
+  (see above). The FK to `shots` is real and NOT NULL, and `impact_offset_ms`
+  is the table's only nullable column — a clip exists because the hub asked a
+  camera for a *known* shot's pre-roll, so the only thing genuinely unknown at
+  write time is where impact sits in the file. Clip bytes are not a `@golf/*`
+  concern: the seam is hub-edge, same as the BLE, monitor and MCP transports.
 - **Coach = Managed Agents** in `@golf/coach` + hub edge client; recaps
   reuse `AnalysisVerdict`/`analyses` so the phone renders them unchanged.
 - **MCP server is read-only and hand-framed** (see above). Tools live in
@@ -202,7 +267,7 @@ the only history. Nothing is waiting on that file — do not re-add it.
 - Hub handedness is a constant (`right`) in `apps/hub/src/main.ts` —
   settings surface pending.
 - No CI. `yarn nx run-many -t test,typecheck,lint` is the manual gate
-  (17 projects, 587 tests — re-run green as of this commit).
+  (17 projects, 612 tests — re-run green as of this commit).
 - Nx cannot build a project graph while sibling git worktrees are checked
   out: each one holds a second copy of every `libs/*` project.json and the
   duplicate names fail the whole graph. `.nxignore` excludes
