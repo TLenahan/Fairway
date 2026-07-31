@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import Anthropic from '@anthropic-ai/sdk';
 import { buildDailySessionExport, parseCoachRecap } from '@golf/coach';
-import { buildInsightsWire } from '@golf/insights';
 import {
   AnalysisVerdict,
   Club,
@@ -12,6 +11,7 @@ import {
 } from '@golf/types';
 import { z } from 'zod';
 
+import { runProgramLoop } from '../program-runner';
 import { ensureCoachResources, runCoachSession } from './coach-agent';
 
 const COACH_MODEL = 'claude-opus-5';
@@ -54,21 +54,29 @@ export async function runDailyCoachRecap(
   const session = await data.getSession(sessionId);
   if (!session) throw new Error(`session ${sessionId} not found`);
 
-  const [shots, swings, history] = await Promise.all([
+  const [shots, swings, clubs] = await Promise.all([
     data.listShots(sessionId),
     data.listWristSwings(sessionId),
-    loadShotHistory(data),
+    data.listClubs({ includeArchived: true }),
   ]);
   if (shots.length === 0) return; // nothing to coach
+
+  // End of session is when this session's shots first reach the engine, so
+  // it is also when a new finding earns its block and a filled re-measure
+  // window gets judged — hence the loop runs here rather than only serving.
+  // Its payload carries the engine wire AND the blocks in flight, so the
+  // coach can see that a finding is already being worked instead of
+  // re-prescribing it in prose.
+  const { payload: insights } = await runProgramLoop(data, Date.now());
 
   // The coach consumes these numbers and never recomputes them (§6.12 rule 2).
   const payload = buildDailySessionExport(
     session,
     shots,
     swings,
-    history.clubs,
+    clubs,
     config.handedness,
-    buildInsightsWire(history.shots, history.clubs),
+    insights,
   );
 
   const resources = await ensureCoachResources(client, config.dataDir);
