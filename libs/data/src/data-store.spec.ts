@@ -1,4 +1,5 @@
 import {
+  Clip,
   DrillRep,
   FlightResult,
   MeasuredShot,
@@ -127,6 +128,27 @@ const drillRepInput = (
   targetAngleDeg: null,
   outcome: 'calibrating',
   carryM: null,
+  ...overrides,
+});
+
+const clipInput = (
+  shotId: string,
+  sessionId: string,
+  overrides: Partial<Omit<Clip, 'id' | 'createdAt'>> = {},
+): Omit<Clip, 'id' | 'createdAt'> => ({
+  shotId,
+  sessionId,
+  source: 'phone',
+  view: 'down_the_line',
+  path: `${sessionId}/clip-a.mp4`,
+  bytes: 8_400_000,
+  durationMs: 6_000,
+  fps: 120,
+  width: 1920,
+  height: 1080,
+  sync: 'coarse',
+  impactOffsetMs: null,
+  capturedAt: 5_000,
   ...overrides,
 });
 
@@ -740,5 +762,106 @@ describe('createDataStore', () => {
       escalated,
     ]);
     expect(await store.listTrainingBlocks({ status: 'abandoned' })).toEqual([]);
+  });
+
+  it('round-trips clips per shot and per session, capturedAt ascending', async () => {
+    const { store } = await build();
+    const club = await store.createClub({
+      name: '7 Iron',
+      category: 'iron',
+      swingTag: 'full',
+      loftDeg: 34,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    });
+    const session = await store.createSession({
+      name: null,
+      notes: null,
+      startedAt: 1,
+      environment: env,
+    });
+    const first = await store.insertShot(
+      session.id,
+      club.id,
+      measured('c-1'),
+      null,
+    );
+    const second = await store.insertShot(
+      session.id,
+      club.id,
+      measured('c-2'),
+      null,
+    );
+
+    // the two-view station: one shot, both cameras, one request each
+    const dtl = await store.insertClip(clipInput(first.id, session.id));
+    const faceOn = await store.insertClip(
+      clipInput(first.id, session.id, {
+        source: 'gopro',
+        view: 'face_on',
+        path: `${session.id}/clip-b.mp4`,
+        capturedAt: 5_100,
+      }),
+    );
+    const later = await store.insertClip(
+      clipInput(second.id, session.id, {
+        path: `${session.id}/clip-c.mp4`,
+        capturedAt: 9_000,
+      }),
+    );
+
+    expect(await store.listClipsByShot(first.id)).toEqual([dtl, faceOn]);
+    expect(await store.listClipsByShot(second.id)).toEqual([later]);
+    expect(await store.listClips(session.id)).toEqual([dtl, faceOn, later]);
+    expect(await store.listClips('nope')).toEqual([]);
+    expect(await store.getClip(dtl.id)).toEqual(dtl);
+    expect(await store.getClip('nope')).toBeNull();
+  });
+
+  it('setClipImpactOffset moves sync and offset together, and 0 is a real offset', async () => {
+    const { store } = await build();
+    const club = await store.createClub({
+      name: '7 Iron',
+      category: 'iron',
+      swingTag: 'full',
+      loftDeg: 34,
+      notes: null,
+      tracerColor: null,
+      focusNote: null,
+      archived: false,
+    });
+    const session = await store.createSession({
+      name: null,
+      notes: null,
+      startedAt: 1,
+      environment: env,
+    });
+    const shot = await store.insertShot(
+      session.id,
+      club.id,
+      measured('c-1'),
+      null,
+    );
+
+    const clip = await store.insertClip(clipInput(shot.id, session.id));
+    expect(clip.sync).toBe('coarse');
+    expect(clip.impactOffsetMs).toBeNull();
+
+    await store.setClipImpactOffset(clip.id, 'fine', 4_180);
+    const located = await store.getClip(clip.id);
+    expect(located?.sync).toBe('fine');
+    expect(located?.impactOffsetMs).toBe(4_180);
+
+    // impact on the first frame is a legitimate answer and must not read back
+    // as "not located" — the whole reason the column is nullable
+    const edge = await store.insertClip(
+      clipInput(shot.id, session.id, { path: `${session.id}/edge.mp4` }),
+    );
+    await store.setClipImpactOffset(edge.id, 'fine', 0);
+    const read = await store.getClip(edge.id);
+    expect(read?.impactOffsetMs).toBe(0);
+    expect(read?.impactOffsetMs).not.toBeNull();
   });
 });

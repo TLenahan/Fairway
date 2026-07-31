@@ -1,6 +1,7 @@
 import {
   categoryToSensorMode,
   AnalysisRecord,
+  Clip,
   Club,
   DataStore,
   DrillRep,
@@ -15,6 +16,7 @@ import {
 import { SqlDatabase, SqlValue } from './database';
 import {
   mapAnalysisRow,
+  mapClipRow,
   mapClubRow,
   mapDrillRepRow,
   mapSessionRow,
@@ -22,6 +24,7 @@ import {
   mapTrainingBlockRow,
   mapWristSwingRow,
   AnalysisRow,
+  ClipRow,
   ClubRow,
   DrillRepRow,
   SessionRow,
@@ -522,6 +525,69 @@ export function createDataStore(
         'SELECT * FROM training_blocks ORDER BY created_at ASC',
       );
       return rows.map(mapTrainingBlockRow);
+    },
+
+    async insertClip(input) {
+      const clip: Clip = { ...input, id: newId(), createdAt: now() };
+      await db.runAsync(
+        `INSERT INTO clips (id, shot_id, session_id, source, view, path, bytes,
+           duration_ms, fps, width, height, sync, impact_offset_ms, captured_at,
+           created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          clip.id,
+          clip.shotId,
+          clip.sessionId,
+          clip.source,
+          clip.view,
+          clip.path,
+          clip.bytes,
+          clip.durationMs,
+          clip.fps,
+          clip.width,
+          clip.height,
+          clip.sync,
+          clip.impactOffsetMs,
+          clip.capturedAt,
+          clip.createdAt,
+        ],
+      );
+      return clip;
+    },
+
+    async setClipImpactOffset(clipId, sync, impactOffsetMs) {
+      // sync moves with the offset because the two are one fact: locating
+      // impact IS what upgrades a clip from coarse to fine. Letting a caller
+      // set an offset without saying how it was found would leave a number
+      // nobody can weigh.
+      await db.runAsync(
+        'UPDATE clips SET sync = ?, impact_offset_ms = ? WHERE id = ?',
+        [sync, impactOffsetMs, clipId],
+      );
+    },
+
+    async getClip(id) {
+      const row = await db.getFirstAsync<ClipRow>(
+        'SELECT * FROM clips WHERE id = ?',
+        [id],
+      );
+      return row ? mapClipRow(row) : null;
+    },
+
+    async listClips(sessionId) {
+      const rows = await db.getAllAsync<ClipRow>(
+        'SELECT * FROM clips WHERE session_id = ? ORDER BY captured_at ASC',
+        [sessionId],
+      );
+      return rows.map(mapClipRow);
+    },
+
+    async listClipsByShot(shotId) {
+      const rows = await db.getAllAsync<ClipRow>(
+        'SELECT * FROM clips WHERE shot_id = ? ORDER BY captured_at ASC',
+        [shotId],
+      );
+      return rows.map(mapClipRow);
     },
   };
 }

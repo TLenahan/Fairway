@@ -5,8 +5,16 @@ import { join } from 'node:path';
 
 import Anthropic from '@anthropic-ai/sdk';
 import { openNodeDatabase } from '@golf/data/node';
-import { Environment } from '@golf/types';
+import {
+  ClipSource,
+  ClipSourceSchema,
+  ClipView,
+  ClipViewSchema,
+  Environment,
+} from '@golf/types';
 
+import { createClipStore } from './capture/clip-store';
+import { createCaptureRegistry } from './capture/requests';
 import { runDailyCoachRecap } from './coach/recap-runner';
 import { createRecapTracker } from './recap-endpoint';
 import { startHubServer } from './server';
@@ -27,6 +35,24 @@ const ENVIRONMENT: Environment = {
   temperatureC: 20,
   presetName: null,
 };
+
+/**
+ * Cameras the hub should ask for footage, as `source:view` pairs —
+ * `HUB_CAMERAS=phone:face_on,gopro:down_the_line`. Unset means no cameras, and
+ * therefore no capture requests: a hub with nothing pointed at the hitting bay
+ * should not spend every shot asking an empty room for a clip.
+ */
+function configuredCameras(): { source: ClipSource; view: ClipView }[] {
+  const raw = process.env.HUB_CAMERAS?.trim();
+  if (!raw) return [];
+  return raw.split(',').map((entry) => {
+    const [source, view] = entry.trim().split(':');
+    return {
+      source: ClipSourceSchema.parse(source),
+      view: ClipViewSchema.parse(view),
+    };
+  });
+}
 
 async function main(): Promise<void> {
   // FAIRWAY_DATA_DIR points the whole hub (DB, coach resources, API key) at a
@@ -63,6 +89,21 @@ async function main(): Promise<void> {
   monitor.on('connection', (state) => console.log(`[mini] ${state}`));
   wrist?.on('connection', (state) => console.log(`[wrist] ${state}`));
 
+  // Capture (Phase 2). Both clip sources are ring-buffer devices — the phone's
+  // buffer, the GoPro's Hindsight — so the ask goes out AFTER the ball is
+  // struck, when the hub already knows which shot it is asking about. That is
+  // why a clip is never matched to a shot by timing the way a wrist swing is.
+  const cameras = configuredCameras();
+  const captureRegistry = createCaptureRegistry();
+  const clipStore = createClipStore(join(dataDir, 'clips'));
+  if (cameras.length === 0) {
+    console.log('[capture] no cameras — set HUB_CAMERAS=phone:down_the_line');
+  } else {
+    console.log(
+      `[capture] ${cameras.map((c) => `${c.source}:${c.view}`).join(', ')}`,
+    );
+  }
+
   store.subscribe((state, prev) => {
     const latest = state.sessionShots[0];
     if (latest && latest !== prev.sessionShots[0]) {
@@ -71,6 +112,16 @@ async function main(): Promise<void> {
         `[shot] ${latest.measured.shotGuid} ` +
           `carry ${latest.flight?.carryM.toFixed(1) ?? '—'} m${wristTag}`,
       );
+      for (const camera of cameras) {
+        const request = captureRegistry.open({
+          shotId: latest.id,
+          sessionId: latest.sessionId,
+          ...camera,
+        });
+        console.log(
+          `[capture] ${camera.source}:${camera.view} → request ${request.id}`,
+        );
+      }
     }
   });
 
@@ -122,6 +173,11 @@ async function main(): Promise<void> {
     uiDir,
     port: UI_PORT,
     recapTracker,
+    capture: {
+      data: services.data,
+      clips: clipStore,
+      registry: captureRegistry,
+    },
     ...(onSessionEnd ? { onSessionEnd } : {}),
   });
 

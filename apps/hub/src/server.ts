@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { Environment, WristDevice } from '@golf/types';
 import { WebSocket, WebSocketServer } from 'ws';
 
+import { CaptureEndpointDeps, handleCaptureRequest } from './capture/endpoint';
 import { runProgramLoop } from './program-runner';
 import { RecapTracker, loadRecaps } from './recap-endpoint';
 import { HubServices } from './services';
@@ -29,6 +30,12 @@ export interface HubServerConfig {
    * absent reports 'idle'.
    */
   recapTracker?: RecapTracker;
+  /**
+   * Clip ingest + playback (Phase 2). Optional so a hub with no cameras — and
+   * every test that does not care about them — stands up without a clips
+   * directory; absent means the /api/clips routes 404 like any other path.
+   */
+  capture?: CaptureEndpointDeps;
 }
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -57,7 +64,24 @@ export async function startHubServer(
 
   const httpServer = createServer((req, res) => {
     void (async () => {
-      const path = req.url === '/' || req.url === undefined ? '/index.html' : req.url;
+      // Base is a formality — the hub only ever listens on loopback — but the
+      // capture endpoints carry query strings, and a raw `req.url` compare
+      // would treat `/api/clips?shotId=x` as a different route from
+      // `/api/clips`.
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      const path = url.pathname === '/' ? '/index.html' : url.pathname;
+
+      if (config.capture) {
+        try {
+          if (await handleCaptureRequest(config.capture, req, res, url)) return;
+        } catch (err) {
+          const error = err instanceof Error ? err.message : String(err);
+          res
+            .writeHead(500, { 'content-type': 'application/json' })
+            .end(JSON.stringify({ error }));
+          return;
+        }
+      }
 
       // Findings and baselines are windowed over the whole shot history, so
       // insights are pulled on demand rather than riding the per-shot snapshot

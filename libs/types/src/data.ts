@@ -1,4 +1,5 @@
 import { AnalysisRecord } from './analysis';
+import { Clip, ClipSync } from './clip';
 import { Club } from './club';
 import { DrillRep } from './drill';
 import { ShotIntent } from './enums';
@@ -91,4 +92,17 @@ export interface DataStore {
   listTrainingBlocks(opts?: {
     status?: TrainingBlockStatus;
   }): Promise<TrainingBlock[]>;
+  // swing clips (Phase 2) — `shotId` is assigned by the capture request the
+  // clip was uploaded against, never inferred from timing (see clip.ts)
+  insertClip(input: Omit<Clip, 'id' | 'createdAt'>): Promise<Clip>;
+  /** Locate impact once the clip has been analysed for it. */
+  setClipImpactOffset(
+    clipId: string,
+    sync: ClipSync,
+    impactOffsetMs: number,
+  ): Promise<void>;
+  getClip(id: string): Promise<Clip | null>;
+  /** capturedAt ascending. */
+  listClips(sessionId: string): Promise<Clip[]>;
+  listClipsByShot(shotId: string): Promise<Clip[]>;
 }

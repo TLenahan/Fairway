@@ -2,6 +2,8 @@ import {
   AnalysisRecord,
   AnalysisRecordSchema,
   BlockToleranceSchema,
+  Clip,
+  ClipSchema,
   Club,
   ClubSchema,
   DrillRep,
@@ -332,6 +334,45 @@ export function mapTrainingBlockRow(row: TrainingBlockRow): TrainingBlock {
     startedAt: row.started_at,
     resolvedAt: row.resolved_at,
     resolutionNote: row.resolution_note,
+    createdAt: row.created_at,
+  });
+}
+
+export interface ClipRow {
+  id: string;
+  shot_id: string;
+  session_id: string;
+  source: string;
+  view: string;
+  path: string;
+  bytes: number;
+  duration_ms: number;
+  fps: number;
+  width: number;
+  height: number;
+  sync: string;
+  impact_offset_ms: number | null;
+  captured_at: number;
+  created_at: number;
+}
+
+/** Column view → `Clip`. */
+export function mapClipRow(row: ClipRow): Clip {
+  return ClipSchema.parse({
+    id: row.id,
+    shotId: row.shot_id,
+    sessionId: row.session_id,
+    source: row.source,
+    view: row.view,
+    path: row.path,
+    bytes: row.bytes,
+    durationMs: row.duration_ms,
+    fps: row.fps,
+    width: row.width,
+    height: row.height,
+    sync: row.sync,
+    impactOffsetMs: row.impact_offset_ms,
+    capturedAt: row.captured_at,
     createdAt: row.created_at,
   });
 }

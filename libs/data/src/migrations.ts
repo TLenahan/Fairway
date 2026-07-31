@@ -283,6 +283,45 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 11,
+    async up(db) {
+      // Swing clips (Phase 2). The FK to shots is real and NOT NULL: a clip
+      // exists because the hub asked a camera for that shot's pre-roll, so a
+      // clip whose shot is unknown is a contradiction, not a nullable case.
+      // Contrast wrist_swings, which are kept even when unpaired — those
+      // arrive on their own and only sometimes match a shot.
+      //
+      // Bytes live on disk under the data dir; `path` is relative to it so a
+      // data-dir move (FAIRWAY_DATA_DIR) does not orphan every row.
+      //
+      // IF NOT EXISTS: the runner bumps user_version in a separate statement,
+      // so a crash between the two must leave a re-runnable migration.
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS clips (
+          id TEXT PRIMARY KEY,
+          shot_id TEXT NOT NULL REFERENCES shots(id),
+          session_id TEXT NOT NULL REFERENCES sessions(id),
+          source TEXT NOT NULL CHECK (source IN ('phone','gopro')),
+          view TEXT NOT NULL CHECK (view IN ('down_the_line','face_on')),
+          path TEXT NOT NULL UNIQUE,
+          bytes INTEGER NOT NULL,
+          duration_ms INTEGER NOT NULL,
+          fps REAL NOT NULL,
+          width INTEGER NOT NULL,
+          height INTEGER NOT NULL,
+          sync TEXT NOT NULL CHECK (sync IN ('coarse','fine')),
+          -- NULL = impact not located yet. 0 is a real answer (impact on the
+          -- first frame), so it can never double as "unknown".
+          impact_offset_ms INTEGER,
+          captured_at INTEGER NOT NULL,
+          created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_clips_shot ON clips(shot_id);
+        CREATE INDEX IF NOT EXISTS idx_clips_session ON clips(session_id);
+      `);
+    },
+  },
 ];
 
 export async function runMigrations(db: SqlDatabase): Promise<number> {

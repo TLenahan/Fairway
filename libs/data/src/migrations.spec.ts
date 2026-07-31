@@ -5,7 +5,7 @@ describe('migration harness', () => {
   it('migrates a fresh database to the latest version', async () => {
     const db = openTestDatabase();
     const version = await runMigrations(db);
-    expect(version).toBe(10);
+    expect(version).toBe(11);
 
     const tables = await db.getAllAsync<{ name: string }>(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
@@ -20,6 +20,7 @@ describe('migration harness', () => {
         'drill_reps',
         'wrist_swings',
         'training_blocks',
+        'clips',
       ]),
     );
     db.close();
@@ -28,7 +29,7 @@ describe('migration harness', () => {
   it('is idempotent — re-running applies nothing', async () => {
     const db = openTestDatabase();
     await runMigrations(db);
-    await expect(runMigrations(db)).resolves.toBe(10);
+    await expect(runMigrations(db)).resolves.toBe(11);
     db.close();
   });
 
@@ -67,7 +68,7 @@ describe('migration harness', () => {
          '{}'
        )`,
     );
-    await expect(runMigrations(db)).resolves.toBe(10);
+    await expect(runMigrations(db)).resolves.toBe(11);
     const row = await db.getFirstAsync<{ curve_m: number | null }>(
       "SELECT curve_m FROM shots WHERE id = 'x1'",
     );
@@ -149,7 +150,7 @@ describe('migration harness', () => {
          97, 95, 95, 0, 95, 0, 0, 0, 0, '{}'
        )`,
     );
-    await expect(runMigrations(db)).resolves.toBe(10);
+    await expect(runMigrations(db)).resolves.toBe(11);
     const session = await db.getFirstAsync<{ default_intent: string }>(
       "SELECT default_intent FROM sessions WHERE id = 's1'",
     );
@@ -310,7 +311,7 @@ describe('migration harness', () => {
     );
     expect(before).toEqual([]);
 
-    await expect(runMigrations(db)).resolves.toBe(10);
+    await expect(runMigrations(db)).resolves.toBe(11);
 
     const columns = await db.getAllAsync<{ name: string }>(
       'PRAGMA table_info(training_blocks)',
@@ -353,7 +354,7 @@ describe('migration harness', () => {
        VALUES ('s1', NULL, NULL, 100, 0, 'stock', 100)`,
     );
 
-    await expect(runMigrations(db)).resolves.toBe(10);
+    await expect(runMigrations(db)).resolves.toBe(11);
 
     // sessions that predate focus stay unfocused rather than being backfilled
     // with a guess — null is the honest value, and the coach is told so
@@ -372,6 +373,123 @@ describe('migration harness', () => {
       "SELECT focus_club_id FROM sessions WHERE id = 's2'",
     );
     expect(focused?.focus_club_id).toBe('not-a-club');
+    db.close();
+  });
+
+  it('v11 creates clips with a real shot FK and a nullable impact offset', async () => {
+    const db = openTestDatabase();
+    for (const migration of MIGRATIONS.slice(0, 10)) {
+      await migration.up(db);
+    }
+    await db.execAsync('PRAGMA user_version = 10');
+    const before = await db.getAllAsync<{ name: string }>(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='clips'",
+    );
+    expect(before).toEqual([]);
+
+    await expect(runMigrations(db)).resolves.toBe(11);
+
+    const columns = await db.getAllAsync<{
+      name: string;
+      notnull: number;
+      pk: number;
+    }>('PRAGMA table_info(clips)');
+    expect(columns.map((c) => c.name)).toEqual([
+      'id',
+      'shot_id',
+      'session_id',
+      'source',
+      'view',
+      'path',
+      'bytes',
+      'duration_ms',
+      'fps',
+      'width',
+      'height',
+      'sync',
+      'impact_offset_ms',
+      'captured_at',
+      'created_at',
+    ]);
+    // exactly one nullable column. A clip exists because the hub asked a
+    // camera for a known shot's pre-roll, so every identifying field is
+    // NOT NULL; the only thing genuinely unknown at write time is where
+    // impact sits in the file.
+    const nullable = columns
+      .filter((c) => c.notnull === 0 && c.pk === 0)
+      .map((c) => c.name);
+    expect(nullable).toEqual(['impact_offset_ms']);
+
+    const indexes = await db.getAllAsync<{ name: string }>(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'index' AND tbl_name = 'clips' ORDER BY name`,
+    );
+    expect(indexes.map((i) => i.name)).toEqual(
+      expect.arrayContaining(['idx_clips_session', 'idx_clips_shot']),
+    );
+    db.close();
+  });
+
+  it('v11 clips reject an unknown view and a duplicate path', async () => {
+    const db = openTestDatabase();
+    await runMigrations(db);
+    await db.execAsync('PRAGMA foreign_keys = ON');
+    await db.runAsync(
+      `INSERT INTO clubs (id, name, category, sensor_mode, archived, created_at)
+       VALUES ('c1', '7i', 'iron', 'iron', 0, 1)`,
+    );
+    await db.runAsync(
+      `INSERT INTO sessions (id, name, notes, started_at, altitude_m, default_intent, created_at)
+       VALUES ('s1', NULL, NULL, 100, 0, 'stock', 100)`,
+    );
+    await db.runAsync(
+      `INSERT INTO shots (id, session_id, club_id, shot_guid, captured_at,
+         impact_timestamp, handedness, ball_speed_ms, launch_angle_deg,
+         launch_direction_deg, backspin_rpm, sidespin_rpm, rollspin_rpm,
+         assurance_spin, assurance_clubspeed, assurance_clubpath,
+         assurance_faceangle, assurance_attackangle, assurance_loftangle,
+         assurance_lieangle, assurance_faceimpact_lateral,
+         assurance_faceimpact_vertical, raw_json)
+       VALUES ('sh1', 's1', 'c1', 'g1', 100, 100, 'right', 60, 15, 0, 6000, 0,
+         0, 97, 95, 95, 0, 95, 0, 0, 0, 0, '{}')`,
+    );
+    const insertClip = (
+      id: string,
+      shotId: string,
+      view: string,
+      path: string,
+    ): Promise<void> =>
+      db.runAsync(
+        `INSERT INTO clips (id, shot_id, session_id, source, view, path, bytes,
+           duration_ms, fps, width, height, sync, impact_offset_ms, captured_at,
+           created_at)
+         VALUES (?, ?, 's1', 'phone', ?, ?, 1, 6000, 120, 1920, 1080,
+           'coarse', NULL, 100, 100)`,
+        [id, shotId, view, path],
+      );
+    const rejection = async (p: Promise<void>): Promise<string> => {
+      try {
+        await p;
+        return 'accepted';
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    };
+
+    expect(await rejection(insertClip('cl1', 'sh1', 'down_the_line', 's1/a.mp4')))
+      .toBe('accepted');
+    // a view the pose pipeline has no geometry for is a typo, not a new angle
+    expect(await rejection(insertClip('cl2', 'sh1', 'side', 's1/b.mp4'))).toContain(
+      'CHECK constraint failed',
+    );
+    // two rows pointing at one file means one of them is about the wrong swing
+    expect(
+      await rejection(insertClip('cl3', 'sh1', 'face_on', 's1/a.mp4')),
+    ).toContain('UNIQUE constraint failed');
+    // and a clip of a shot the hub never recorded cannot exist
+    expect(
+      await rejection(insertClip('cl4', 'nope', 'face_on', 's1/c.mp4')),
+    ).toContain('FOREIGN KEY constraint failed');
     db.close();
   });
 });

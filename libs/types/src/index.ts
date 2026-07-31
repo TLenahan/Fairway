@@ -5,6 +5,7 @@ export * from './shot';
 export * from './flight';
 export * from './device';
 export * from './wrist';
+export * from './clip';
 export * from './drill';
 export * from './program';
 export * from './data';

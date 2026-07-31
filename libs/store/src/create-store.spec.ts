@@ -1,5 +1,7 @@
 import {
   AnalysisRecord,
+  Clip,
+  ClipSync,
   Club,
   DataStore,
   DrillRep,
@@ -298,6 +300,39 @@ class FakeData implements DataStore {
     return opts?.status === undefined
       ? [...this.trainingBlocks]
       : this.trainingBlocks.filter((b) => b.status === opts.status);
+  }
+
+  // Clips are written by the hub's capture endpoint against a request it
+  // minted, never by the store pipeline — the store never sees a camera. Same
+  // as training blocks: implemented to satisfy the contract.
+  clips: Clip[] = [];
+  async insertClip(input: Omit<Clip, 'id' | 'createdAt'>): Promise<Clip> {
+    const created: Clip = {
+      ...input,
+      id: `clip-${this.nextId++}`,
+      createdAt: this.nextCreatedAt++,
+    };
+    this.clips.push(created);
+    return created;
+  }
+  async setClipImpactOffset(
+    clipId: string,
+    sync: ClipSync,
+    impactOffsetMs: number,
+  ): Promise<void> {
+    const clip = this.clips.find((c) => c.id === clipId);
+    if (!clip) throw new Error('missing');
+    clip.sync = sync;
+    clip.impactOffsetMs = impactOffsetMs;
+  }
+  async getClip(id: string): Promise<Clip | null> {
+    return this.clips.find((c) => c.id === id) ?? null;
+  }
+  async listClips(sessionId: string): Promise<Clip[]> {
+    return this.clips.filter((c) => c.sessionId === sessionId);
+  }
+  async listClipsByShot(shotId: string): Promise<Clip[]> {
+    return this.clips.filter((c) => c.shotId === shotId);
   }
 }
 
