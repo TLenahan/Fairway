@@ -4,3 +4,5 @@
 export * from './drill-content';
 export * from './library';
 export * from './prescribe';
+export * from './session-plan';
+export * from './wire';

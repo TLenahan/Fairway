@@ -1,3 +1,10 @@
+// Type-only on purpose: the renderer imports this module, and neither the
+// engine nor the drill library may ever be pulled into the browser bundle
+// (@golf/program validates its content at module load — a cost, and a crash
+// surface, that belongs in the hub process alone). `import type` is erased,
+// so this file stays a pure contract.
+import type { InsightsWire } from '@golf/insights';
+import type { TrainingBlockWire } from '@golf/program';
 import {
   Club,
   DiscoveredDevice,
@@ -12,6 +19,20 @@ import {
  * the phone capture clients). Snapshots are full-state pushes — small enough
  * at session scale that diffing isn't worth the complexity.
  */
+
+/**
+ * What `GET /api/insights` returns: the engine wire plus the training blocks
+ * the §6.10 prescription loop has issued against it.
+ *
+ * One payload rather than two endpoints because findings and blocks are two
+ * halves of the same answer — a finding the loop has already prescribed
+ * against reads very differently from one it hasn't, and a UI that fetched
+ * them separately could render a finding as unaddressed while its block was
+ * still in flight.
+ */
+export interface HubInsightsPayload extends InsightsWire {
+  blocks: TrainingBlockWire[];
+}
 
 /** One shot row trimmed for the UI — no trajectory samples over the wire. */
 export interface ShotRowDto {

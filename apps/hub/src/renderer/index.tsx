@@ -11,9 +11,23 @@ import type {
   InsightMetricKey,
   InsightsWire,
 } from '@golf/insights';
+import type { TrainingBlockWire } from '@golf/program';
 import { ShotIntent } from '@golf/types';
 
 import { HubCommand, HubSnapshot, SnapshotMessage } from '../shared/protocol';
+
+/**
+ * What `GET /api/insights` returns: the engine wire plus the training blocks
+ * the §6.10 prescription loop has issued against it.
+ *
+ * Declared structurally here rather than imported because the server-side
+ * `HubInsightsPayload` lands in a sibling change; once it exists in
+ * ../shared/protocol this local type should be deleted in favour of it. The
+ * shape is the contract either way.
+ */
+interface HubInsightsPayload extends InsightsWire {
+  blocks: TrainingBlockWire[];
+}
 
 const INTENTS: ShotIntent[] = ['stock', 'draw', 'fade'];
 
@@ -69,8 +83,8 @@ function useHub(): {
  * rather than polling. Returns null until the first fetch resolves, which is
  * what keeps the panel hidden instead of flashing an empty state.
  */
-function useInsights(snapshot: HubSnapshot | null): InsightsWire | null {
-  const [insights, setInsights] = useState<InsightsWire | null>(null);
+function useInsights(snapshot: HubSnapshot | null): HubInsightsPayload | null {
+  const [insights, setInsights] = useState<HubInsightsPayload | null>(null);
   const fetched = useRef(false);
   const live = snapshot?.session != null && snapshot.session.endedAt === null;
 
@@ -80,8 +94,11 @@ function useInsights(snapshot: HubSnapshot | null): InsightsWire | null {
     let disposed = false;
     fetch('/api/insights')
       .then((response) => (response.ok ? response.json() : null))
-      .then((wire: InsightsWire | null) => {
-        if (!disposed && wire) setInsights(wire);
+      .then((wire: HubInsightsPayload | null) => {
+        // `blocks` is defaulted at the boundary so a hub build that predates
+        // the prescription endpoint still renders insights instead of
+        // throwing on a field that isn't on the wire yet.
+        if (!disposed && wire) setInsights({ ...wire, blocks: wire.blocks ?? [] });
       })
       .catch(() => undefined);
     return () => {
@@ -121,6 +138,43 @@ const FAILURE_WORDS: Record<FailureMode, string> = {
   short: 'short misses',
   long: 'long misses',
 };
+
+/**
+ * Units for the metrics a tolerance band can sit on. The leading space is
+ * part of the unit ("8.2 m/s" but "8.2°"), and an absent entry means the
+ * metric reads fine bare — smash is a ratio, and nothing here should invent a
+ * unit it isn't sure of.
+ */
+const UNITS: Partial<Record<InsightMetricKey, string>> = {
+  ballSpeedMs: ' m/s',
+  clubSpeedMs: ' m/s',
+  launchDeg: '°',
+  launchDirDeg: '°',
+  backspinRpm: ' rpm',
+  sidespinRpm: ' rpm',
+  carryM: ' m',
+  offlineM: ' m',
+  curveM: ' m',
+  apexM: ' m',
+  strikeHMm: ' mm',
+  strikeVMm: ' mm',
+  wristExtTop: '°',
+  wristExtImpact: '°',
+  wristExtPeakDown: '°',
+};
+
+/**
+ * A block's `failure_mode` / `target_metric` / `tolerance.metric` cross the
+ * wire as plain strings — it is a serialized payload, not the engine's unions
+ * — so they are looked up defensively rather than asserted back onto a union.
+ * An unrecognised key degrades to null (caller falls back) instead of
+ * rendering a raw engine id.
+ */
+function words(map: Record<string, string | undefined>, key: string | null): string | null {
+  return key === null ? null : (map[key] ?? null);
+}
+
+const unitFor = (metric: string): string => words(UNITS, metric) ?? '';
 
 const CERTIFICATION_WORDS: Record<CertificationStatus, string> = {
   certified: 'certified',
@@ -305,6 +359,154 @@ function Insights({ wire }: { wire: InsightsWire }): React.JSX.Element {
   );
 }
 
+/**
+ * What a block is training, in the same vocabulary the Insights panel uses —
+ * e.g. "peak wrist extension in transition on low-smash strikes". Program
+ * blocks carry no finding, so they fall back to the drill's own summary.
+ */
+function blockTargets(block: TrainingBlockWire): string {
+  const metric = words(METRIC_WORDS, block.target_metric);
+  const failure = words(FAILURE_WORDS, block.failure_mode);
+  if (metric !== null && failure !== null) return `${metric} on ${failure}`;
+  if (metric !== null) return metric;
+  if (failure !== null) return failure;
+  return block.drill_summary;
+}
+
+/**
+ * "target 8.2° ± 3.1°". The band comes from the user's own great shots at
+ * issue time (§6.10), so it is shown as-is — never re-derived here.
+ */
+function toleranceWords(tolerance: TrainingBlockWire['tolerance']): string | null {
+  if (tolerance === null) return null;
+  const unit = unitFor(tolerance.metric);
+  return `target ${fmt(tolerance.center)}${unit} ± ${fmt(tolerance.half_width)}${unit}`;
+}
+
+/**
+ * The window size, not a progress bar: nothing on the wire says how many
+ * qualifying shots have landed in the bucket since issue, and the live
+ * snapshot only holds the current session — counting from it would report a
+ * number the loop is not actually judging. When the runner has already
+ * written a note on an active block, that note is its own progress line and
+ * is shown verbatim underneath.
+ */
+function ActiveBlock({
+  block,
+  bucket,
+}: {
+  block: TrainingBlockWire;
+  bucket: string;
+}): React.JSX.Element {
+  const band = toleranceWords(block.tolerance);
+  return (
+    <li>
+      <div className="row" style={{ gap: 8 }}>
+        <span className="who">{block.drill_name}</span>
+        <span className="dim">{bucket}</span>
+        <span className="dim" style={{ marginLeft: 'auto' }}>
+          re-measure after {block.remeasure_shots} shots
+        </span>
+      </div>
+      <div>
+        {blockTargets(block)}
+        {band !== null && <span className="dim"> · {band}</span>}
+      </div>
+      {block.protocol !== '' && <div className="protocol dim">{block.protocol}</div>}
+      {block.resolution_note !== null && (
+        <div className="dim">{block.resolution_note}</div>
+      )}
+    </li>
+  );
+}
+
+function ResolvedBlock({
+  block,
+  bucket,
+}: {
+  block: TrainingBlockWire;
+  bucket: string;
+}): React.JSX.Element {
+  const graduated = block.status === 'graduated';
+  return (
+    <li className="resolved">
+      <div className="row" style={{ gap: 8 }}>
+        <span>{block.drill_name}</span>
+        <span className="dim">{bucket}</span>
+        <span className={graduated ? 'good' : 'warn'} style={{ marginLeft: 'auto' }}>
+          {graduated ? 'graduated' : 'escalated'}
+        </span>
+      </div>
+      {block.resolution_note !== null && (
+        <div className="dim">{block.resolution_note}</div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The prescription loop made visible: what is being trained now, and what the
+ * loop already judged. `abandoned` blocks are deliberately absent — a
+ * superseded block is history, not training.
+ */
+function Training({
+  blocks,
+  clubs,
+}: {
+  blocks: TrainingBlockWire[];
+  clubs: HubSnapshot['clubs'];
+}): React.JSX.Element | null {
+  // The wire carries club_id only; the snapshot is the one place club names
+  // live, so the bucket is named from there rather than duplicated onto it.
+  const clubName = new Map(clubs.map((club) => [club.id, club.name]));
+  const bucketOf = (block: TrainingBlockWire): string =>
+    block.club_id === null || block.intent === null
+      ? 'program work'
+      : `${clubName.get(block.club_id) ?? 'Unknown'} · ${block.intent}`;
+
+  // Oldest first — the block nearest the end of its re-measure window is the
+  // one with something to say next.
+  const active = blocks
+    .filter((block) => block.status === 'active')
+    .sort((a, b) => a.started_at_ms - b.started_at_ms);
+  // Most recently judged first; a block missing resolvedAt falls back to when
+  // it was issued so the ordering never collapses.
+  const resolved = blocks
+    .filter((block) => block.status === 'graduated' || block.status === 'escalated')
+    .sort(
+      (a, b) =>
+        (b.resolved_at_ms ?? b.started_at_ms) - (a.resolved_at_ms ?? a.started_at_ms),
+    );
+
+  if (active.length === 0 && resolved.length === 0) return null;
+
+  return (
+    <div className="panel">
+      <h2>Training</h2>
+      {active.length === 0 ? (
+        <span className="dim">No active blocks — nothing prescribed right now.</span>
+      ) : (
+        <ul className="blocks">
+          {active.map((block) => (
+            <ActiveBlock key={block.id} block={block} bucket={bucketOf(block)} />
+          ))}
+        </ul>
+      )}
+
+      {resolved.length > 0 && (
+        <>
+          <h3>Resolved</h3>
+          <ul className="blocks">
+            {resolved.map((block) => (
+              <ResolvedBlock key={block.id} block={block} bucket={bucketOf(block)} />
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 function App(): React.JSX.Element {
   const { snapshot, connected, send } = useHub();
   const insights = useInsights(snapshot);
@@ -434,6 +636,9 @@ function App(): React.JSX.Element {
       </div>
 
       {insights && <Insights wire={insights} />}
+      {insights && insights.blocks.length > 0 && (
+        <Training blocks={insights.blocks} clubs={s.clubs} />
+      )}
     </>
   );
 }

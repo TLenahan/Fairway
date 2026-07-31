@@ -2,11 +2,10 @@ import { readFile } from 'node:fs/promises';
 import { createServer, Server } from 'node:http';
 import { join } from 'node:path';
 
-import { buildInsightsWire } from '@golf/insights';
 import { Environment, WristDevice } from '@golf/types';
 import { WebSocket, WebSocketServer } from 'ws';
 
-import { loadShotHistory } from './coach/recap-runner';
+import { runProgramLoop } from './program-runner';
 import { HubServices } from './services';
 import { HubCommand, SnapshotMessage } from './shared/protocol';
 import { buildSnapshot } from './snapshot';
@@ -54,12 +53,20 @@ export async function startHubServer(
       // Findings and baselines are windowed over the whole shot history, so
       // insights are pulled on demand rather than riding the per-shot snapshot
       // push — recomputing the engine on every shot would be wasted work.
+      //
+      // This GET also runs the §6.10 prescription loop, which WRITES training
+      // blocks. A GET must not have side effects that surprise the caller,
+      // and this one does not: the loop is idempotent by construction —
+      // `prescribe` skips findings an existing non-abandoned block already
+      // covers, and `evaluate` only resolves blocks whose re-measure window
+      // has closed — so running it here is safe. Two identical requests over
+      // unchanged history leave the store identical.
       if (path === INSIGHTS_PATH) {
         try {
-          const { shots, clubs } = await loadShotHistory(services.data);
+          const { payload } = await runProgramLoop(services.data, Date.now());
           res
             .writeHead(200, { 'content-type': 'application/json' })
-            .end(JSON.stringify(buildInsightsWire(shots, clubs)));
+            .end(JSON.stringify(payload));
         } catch (err) {
           const error = err instanceof Error ? err.message : String(err);
           res
