@@ -16,24 +16,12 @@ import { ShotIntent } from '@golf/types';
 
 import {
   HubCommand,
+  HubInsightsPayload,
   HubSnapshot,
   RecapsPayload,
   RecapWire,
   SnapshotMessage,
 } from '../shared/protocol';
-
-/**
- * What `GET /api/insights` returns: the engine wire plus the training blocks
- * the §6.10 prescription loop has issued against it.
- *
- * Declared structurally here rather than imported because the server-side
- * `HubInsightsPayload` lands in a sibling change; once it exists in
- * ../shared/protocol this local type should be deleted in favour of it. The
- * shape is the contract either way.
- */
-interface HubInsightsPayload extends InsightsWire {
-  blocks: TrainingBlockWire[];
-}
 
 const INTENTS: ShotIntent[] = ['stock', 'draw', 'fade'];
 
