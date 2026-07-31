@@ -1,0 +1,5 @@
+# Git worktrees live under .claude/worktrees and contain full checkouts of the
+# same libs. Without this, Nx discovers each worktree's project.json and fails
+# the whole graph with MultipleProjectsWithSameNameError — from the main
+# checkout only, which is where it hurts most.
+.claude/worktrees
