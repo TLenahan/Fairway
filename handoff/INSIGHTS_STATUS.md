@@ -1,7 +1,9 @@
 # Fairway Insights — Project Status
 
-**As of 2026-07-30 (evening).** Everything described below is merged to
-`main` — the insights branches carry no unmerged work.
+**As of 2026-07-31.** Everything described as built is merged to `main` — the
+insights branches carry no unmerged work. Two sections describe work that is
+DESIGNED but NOT built, and say so in their headings: "Feedback during a
+session", and the Phase 3 entry under "Next build steps".
 Companion docs: [INSIGHTS_AUDIT.md](INSIGHTS_AUDIT.md)
 (Phase 0 audit + decisions), [GOPRO_CAPTURE.md](GOPRO_CAPTURE.md) (camera
 feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
@@ -259,38 +261,135 @@ costs jest nothing and every derived timing is exactly reproducible.
    `HUB_CAMERAS=gopro:down_the_line@<cam-ip>`. The driver is built on the
    assumption item 1 passes (Tim); the bench now verifies that path rather than
    deciding whether to write it. Buy the second body only on a clean pass.
+4. **Who owns `impactOffsetMs`** once the pose worker exists — Python writing
+   it directly (and `setClipImpactOffset` gets deleted), or the hub keeping the
+   column and Python writing only pose results. Recommendation and reasoning
+   under Next build steps 2; it blocks nothing until Python starts.
 
 **Historical import is cancelled, not pending** (Tim, 2026-07-30): there is no
 build on the phone, so `fairway.db` would be empty. The hub's own history is
 the only history. Nothing is waiting on that file — do not re-add it.
 
+## Feedback during a session (design, 2026-07-31 — not built)
+
+The question this answers: mid-session, with baselines set, is the golfer
+getting anything between shots or just pounding balls? Everything below is
+already computed and none of it is surfaced — this is a display problem, not
+an engine one.
+
+**Three tiers, each with the cadence it can honestly support:**
+
+| Tier | Cadence | What it may say |
+|---|---|---|
+| This shot | instant | "great — smash and start line passed, curve missed" |
+| This session | accumulates live, settles at end | in-band count, dispersion, the coach recap |
+| Cross-session | changes rarely | certification, changepoint, findings |
+
+**Per shot, available now with no camera and no clip.** `GreatShotResult`
+already carries `great` plus each criterion — `smash`, `strike`, `startLine`,
+`curveDirection`, `carryWindow` — as an individual pass/fail, with
+`lowSmashCause` when smash failed. It is computed from Mini and wrist data that
+lands with the shot.
+
+**The thing that makes a session not aimless is already in the data model.** An
+active `TrainingBlock` carries a `tolerance` — one `metric`, a `center` (the
+great-shot median at issue), a `halfWidth` band, and the `nGreat` it came from
+— plus `remeasureShots`. That is a live scoreboard: this shot in the band or
+not, "5 of 12" against a window that closes. Today it renders as a static panel
+that states the target once and then says nothing while the golfer hits.
+
+**The rule that keeps it honest: per-shot feedback REPORTS, it never
+PRESCRIBES.** Two separate reasons, and the distinction matters because they
+pull in different directions:
+
+- Commentary across every dimension after every ball has the golfer chasing
+  shot-to-shot noise by shot fifteen. That is the same reasoning already baked
+  into the engine, which will not raise a finding without effect size, sessions
+  and counts behind it, and will not prescribe for a pure bias at all.
+- But feedback on the ONE metric the golfer declared they are working on is
+  not that (Tim, 2026-07-31). The block scopes to a single metric by
+  construction, so "did this shot hit the target" is one comparison against one
+  declared number — not a shot evaluation. That is the mechanism practice runs
+  on, and withholding it is what makes a session aimless.
+
+So: one shot in band is an **observation, not a verdict**. The running count is
+the signal, and `evaluateBlock`'s requirement that both the metric move and the
+outcome improve stays exactly as it is.
+
+**The one piece of real work**: `GET /api/insights` is an on-demand recompute
+over all history. Re-running the whole engine after every ball is not viable —
+this needs a cheaper live path or a debounce.
+
 ## Next build steps (in order)
 
-1. **Phase 3: the pose worker** — Python (`uv`, FastAPI, MediaPipe) + §5.4
-   metrics, reading clips off the seam and writing impact offsets back through
-   `setClipImpactOffset`. This is now the front of the queue: the GoPro path
-   produces clips, and nothing yet reads one. The impact-audio pass that earns
-   a clip `sync: 'fine'` belongs here too — every GoPro clip is `coarse` by
-   construction, and it is the only thing that can change that.
+1. **The live feedback loop** — needs no hardware and no pose, and it is the
+   part of the session that would be felt first. Design settled 2026-07-31,
+   see "Feedback during a session" below. Everything it shows is already
+   computed; the work is surfacing it plus a cheaper live path for
+   `/api/insights`.
+2. **Phase 3: the pose worker** — Python (`uv`, MediaPipe) + §5.4 metrics,
+   **no server** (see the decisions log). This is the front of the hardware
+   queue: the GoPro path produces clips, and nothing yet reads one. The
+   impact-audio pass that earns a clip `sync: 'fine'` belongs here too — every
+   GoPro clip is `coarse` by construction, and it is the only thing that can
+   change that.
 
-   Two things the seam already put in place for it. `setClipImpactOffset`
-   exists on `DataStore` with **no production caller** — it is the write-back
-   waiting for the audio pass, and the reason `impactOffsetMs` is nullable
-   rather than defaulting to 0 (0 is a real answer: impact on the first frame).
-   And `GET /api/clips?sessionId=` plus the Range-capable file endpoint are
-   already the read side; the worker needs nothing new from the hub to start.
+   **Reads off disk** (Tim, 2026-07-31): both the clip bytes and the work list
+   come straight from the data dir and `hub.db`, not over HTTP. The row stores
+   a path RELATIVE to the clips dir, so the worker has to do the same
+   `dataDir + relativePath` join `ClipStore` does, honour `FAIRWAY_DATA_DIR`
+   the same way, and re-check that the joined path stays inside the clips
+   directory — the read side already does, for the same reason.
 
-   Shape it as a **batch consumer with its own queue, not something in the shot
-   loop.** MediaPipe on 1080p120 is nowhere near real time and does not need to
-   be — a clip is ~9 s and every metric it yields is retrospective. Putting it
-   in the capture path would only add a way for the pose stage to cost a shot
-   its clip.
-2. **RN capture app** — ring-buffer spike first (chunked HEVC segments vs
+   **Four things must land before any Python runs**, all hub-side and all
+   needing no footage:
+
+   - **WAL.** `openNodeDatabase` sets `foreign_keys` and nothing else, so the
+     DB is on the default rollback journal and a writer takes an exclusive
+     lock on the whole file. That is survivable today only because the one
+     other process — the MCP server — is read-only. A Python writer against it
+     gets sporadic `database is locked`. One pragma fixes it, and it helps
+     what already ships: under WAL an MCP read no longer queues behind a shot
+     being written.
+   - **Somewhere to put the results.** The `clips` table holds `sync` and
+     `impactOffsetMs` and nothing shaped like landmarks or §5.4 metrics.
+   - **Schema stays TypeScript's.** One schema system was an explicit
+     decision, and `@golf/data` migrations are it. Python writes rows, never
+     DDL — otherwise two things believe they own the schema, which is the
+     exact failure that decision exists to prevent.
+   - **Decide who owns `impactOffsetMs`.** `setClipImpactOffset` has no
+     production caller. If Python writes it directly that method is dead code
+     and should go; the alternative is the hub keeping the column and Python
+     writing only pose results. Recommendation: let Python own it — the audio
+     pass is its work, and splitting one clip's write across two processes
+     buys nothing. **Tim's call, not made yet.**
+
+   **Cold start, and it is the real constraint.** A tolerance band is derived
+   from the user's own great shots — that is why `nGreat` rides on the
+   tolerance at all. For a pose metric that band cannot exist until pose has
+   run over enough past great swings, so **pose's first job is backfilling
+   history, not live feedback**. §6.10 already refuses to prescribe when a band
+   is not derivable, so the system will not invent one; it just means the
+   ordering is capture → backfill → band derivable → live loop.
+
+   **Window the frames.** A 9 s clip at 120 fps is 1080 frames, but the swing
+   is under two of those seconds and `impactOffsetMs` already says where it
+   sits. Anchor the window off impact and run takeaway→impact — roughly 240
+   frames. That is the difference between pose landing after the next shot and
+   landing before the next ball is teed, so it decides whether pose feedback is
+   live or fill-in-later. **Unmeasured — bench it early.**
+
+   **Pose metrics slot in; they do not need a parallel path.**
+   `InsightMetricKey` is a closed union of sixteen keys, all Mini- or
+   wrist-derived. Baselines, findings, tolerance bands and bias-vs-variance are
+   all keyed on that type, so a pose metric added to the union picks up every
+   downstream behaviour for free.
+3. **RN capture app** — ring-buffer spike first (chunked HEVC segments vs
    native AVAssetWriter), live per-shot clips only, no batch. The spike is the
    gate and needs a device; its outcome does not change the hub contract, only
    what fulfils it. Nothing else waits on this — the GoPro is a complete
    second view on its own.
-3. **Second GoPro body** for the two-view station, on a clean bench. The driver
+4. **Second GoPro body** for the two-view station, on a clean bench. The driver
    is already per-view: two entries in `HUB_CAMERAS` with two addresses start
    two of them, each answering only its own requests.
 
@@ -330,6 +429,23 @@ the only history. Nothing is waiting on that file — do not re-add it.
   (see above). Keyframe snapping and a part-full buffer both move the start and
   neither moves the end, so anchoring there is what makes the impact offset
   survive not knowing where the cut landed.
+- **The pose worker is a CLI, not a service** (2026-07-31). FastAPI was the
+  original plan and it is dropped. A server earns its place when something
+  needs to call it and wait; nothing does — pose is retrospective, exactly like
+  the capture feeding it, and nobody is blocked on the answer mid-session.
+  Without a server the work queue is a query ("clips with no pose row"), which
+  makes the worker idempotent and resumable by construction: kill it mid-run
+  and the next run picks up precisely what is left, because what is left is
+  derived from the data rather than held in the worker. Same property that
+  makes `runProgramLoop` safe on a GET. No port, no lifecycle, no health check,
+  no "was it up when that clip landed" failure mode. Wanting pose to land
+  DURING a session does not change this — it only changes how often the CLI
+  runs (`--watch`, or started at session start).
+- **The pose worker reads off disk** (Tim, 2026-07-31) — clips and work list
+  both, straight from the data dir and `hub.db` rather than over HTTP. Note
+  this is the opposite call from the GoPro driver, which goes over loopback
+  HTTP on purpose; the difference is that the driver is a stand-in for a device
+  that could be anywhere, and the worker never will be.
 - **Coach = Managed Agents** in `@golf/coach` + hub edge client; recaps
   reuse `AnalysisVerdict`/`analyses` so the phone renders them unchanged.
 - **MCP server is read-only and hand-framed** (see above). Tools live in
@@ -355,6 +471,16 @@ the only history. Nothing is waiting on that file — do not re-add it.
 - The camera's card is never cleared by the hub — it keeps the untrimmed
   originals (~120 MB a shot). Clear it between range trips or Hindsight runs
   out of room to save into.
+- **The UI cannot tell "still working" from "never coming".** A shot whose
+  capture the driver refused — request went stale, pre-roll too short — shows
+  an empty Clip cell forever, identical to one still encoding. Harmless today;
+  a lie the moment anything shows an "analyzing" state, so the terminal states
+  (`capturing` / `analyzing` / `no clip — too late to catch it`) have to land
+  with it.
+- **SQLite is on the default rollback journal, not WAL** (`openNodeDatabase`
+  sets `foreign_keys` and nothing else). Fine while the only second process is
+  the read-only MCP server; blocks the pose worker, and until it changes an MCP
+  read can queue behind a shot being written.
 - No CI. `yarn nx run-many -t test,typecheck,lint` is the manual gate
   (17 projects, 644 tests — re-run green as of this commit).
 - Nx cannot build a project graph while sibling git worktrees are checked
