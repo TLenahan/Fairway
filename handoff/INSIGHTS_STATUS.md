@@ -1,7 +1,8 @@
 # Fairway Insights — Project Status
 
-**As of 2026-07-30 (evening).** Branch `claude/fairway-insights-spec-09d80d`,
-merged to `main`. Companion docs: [INSIGHTS_AUDIT.md](INSIGHTS_AUDIT.md)
+**As of 2026-07-30 (evening).** Everything described below is merged to
+`main` — the insights branches carry no unmerged work.
+Companion docs: [INSIGHTS_AUDIT.md](INSIGHTS_AUDIT.md)
 (Phase 0 audit + decisions), [GOPRO_CAPTURE.md](GOPRO_CAPTURE.md) (camera
 feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 
@@ -13,7 +14,7 @@ feasibility + bench plan), BUILD_SPEC / CONTRACTS (pre-Insights docs).
 | 1 — Mac hub MVP | **Code-complete.** Awaiting first live-hardware run + historical import (needs the phone's `fairway.db`) |
 | 2 — Capture clients + clips | Not started. **No batch mode (Tim).** Ring-buffer spike is the mandatory first task; GoPro HERO 12 may join per GOPRO_CAPTURE.md bench |
 | 3 — Pose pipeline | Not started (Python/uv worker, MediaPipe) |
-| 4 — Analytics engine | **Done.** `@golf/insights`, 117 tests incl. planted-effect acceptance + negative control |
+| 4 — Analytics engine | **Done.** `@golf/insights`, 122 tests incl. planted-effect acceptance + negative control |
 | 5 — Insights UI / drills / LLM / MCP | Coach narrative layer, findings feed, and the drill library + prescription loop are done and running (early). MCP server not started |
 | 6 — Address station | Not started. Vibrate bench parked (harness recipe in memory; hardware unverified) |
 
@@ -68,6 +69,13 @@ certification, changepoint, findings (guardrailed), bias-vs-variance, carry
 decomposition, dispersion index. All thresholds in
 `libs/insights/src/config.ts`; several corridor/margin numbers are tunable
 placeholders pending real-data calibration.
+
+The engine's wrist inputs come from the wrist-coach keyframes when a swing
+produced them (`libs/insights/src/projection.ts`) — those calibrated angles
+are the only source of the peak-down extension the cast/flip signature is
+mined from, so `flipFlag` and the `'delivery'` low-smash cause were dead
+until the projection read them. Raw keyframe angles are the fallback for
+swings without a coach block, and stay null until a calibration run.
 
 **Drill library + prescription loop** (`@golf/program`): six curated drills
 in `libs/program/content/drills.json` (versioned). `prescribe()` turns
@@ -154,10 +162,13 @@ logic is developed against it.
 - Hub handedness is a constant (`right`) in `apps/hub/src/main.ts` —
   settings surface pending.
 - No CI. `yarn nx run-many -t test,typecheck,lint` is the manual gate
-  (16 projects, 554 tests, green as of this commit).
-- Main-checkout `node_modules` needs `yarn install` after this merge (new
-  packages: `@golf/hub`, `@golf/coach`, `@golf/insights`, `@golf/program`,
-  SDK deps).
+  (16 projects, 559 tests — re-run green as of this commit).
+- Nx cannot build a project graph while sibling git worktrees are checked
+  out: each one holds a second copy of every `libs/*` project.json and the
+  duplicate names fail the whole graph. `.nxignore` excludes
+  `.claude/worktrees`, which is what makes the gate runnable from the main
+  checkout. A worktree still needs its own `yarn install` before it can run
+  anything; the main checkout is installed.
 - `IMPACT_OFFSET_MS` (wrist coach keyframes) still untuned; needs hardware
   sessions.
 - **One recap per focused session, not per range trip.** Focus sessions
